@@ -48,19 +48,22 @@ def ss(msg):
 
 
 # ================= ADMIN PANEL =================
-@bot.message_handler(commands=['admin'])
+@@bot.message_handler(commands=['admin'])
 def admin(msg):
 
-    if msg.from_user.id != ADMIN_ID:
+    if int(msg.from_user.id) != int(ADMIN_ID):
+        bot.send_message(msg.chat.id, "❌ Not allowed")
         return
 
-    bot.send_message(msg.chat.id,
+    text = (
         "🛠 ADMIN PANEL\n\n"
-        "/setstart text\n"
-        "/setprice 29\n"
-        "/setbuy https://link.com\n"
-        "/requests"
+        "✏️ /setstart - Set welcome message\n"
+        "💰 /setprice - Set premium price\n"
+        "🔗 /setbuy - Set payment URL\n"
+        "📥 /requests - View payments\n"
     )
+
+    bot.send_message(msg.chat.id, text)
 
 
 # ================= SET START TEXT =================
