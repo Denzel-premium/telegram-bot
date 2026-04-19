@@ -1,41 +1,48 @@
 from pymongo import MongoClient
-from config import MONGO_URL
 
-client = MongoClient(MONGO_URL)
+client = MongoClient("YOUR_MONGO_URL")
 db = client["premium_bot"]
 
-config_col = db["config"]
-folder_col = db["folders"]
+pending = db["pending"]
+approved = db["approved"]
+premium = db["premium"]
 
-# ---------- CONFIG ----------
-def set_config(key, value):
-    config_col.update_one(
-        {"key": key},
-        {"$set": {"value": value}},
+
+# ================= PENDING =================
+def add_pending(user_id, file_id):
+    pending.update_one(
+        {"user_id": user_id},
+        {"$set": {"file_id": file_id}},
         upsert=True
     )
 
-def get_config(key, default=None):
-    data = config_col.find_one({"key": key})
-    return data["value"] if data else default
+def get_pending():
+    return list(pending.find())
 
-# ---------- FOLDERS ----------
-def add_folder(name):
-    folder_col.update_one(
-        {"name": name},
-        {"$set": {"videos": []}},
+def remove_pending(user_id):
+    pending.delete_one({"user_id": user_id})
+
+
+# ================= APPROVED =================
+def set_approved(user_id, key):
+    approved.update_one(
+        {"user_id": user_id},
+        {"$set": {"key": key}},
         upsert=True
     )
 
-def add_video(folder, file_id):
-    folder_col.update_one(
-        {"name": folder},
-        {"$push": {"videos": file_id}}
+def get_key(user_id):
+    data = approved.find_one({"user_id": user_id})
+    return data["key"] if data else None
+
+
+# ================= PREMIUM =================
+def add_premium(user_id):
+    premium.update_one(
+        {"user_id": user_id},
+        {"$set": {"premium": True}},
+        upsert=True
     )
 
-def get_folders():
-    return list(folder_col.find())
-
-def get_videos(folder):
-    data = folder_col.find_one({"name": folder})
-    return data["videos"] if data else []
+def is_premium(user_id):
+    return premium.find_one({"user_id": user_id}) is not None
