@@ -1,6 +1,6 @@
 import os
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("TOKEN")
 if TOKEN:
     TOKEN = TOKEN.strip()
 
