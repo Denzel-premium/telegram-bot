@@ -1,7 +1,7 @@
 from pymongo import MongoClient
 import time
 
-client = MongoClient("YOUR_MONGO_URL")
+client = MongoClient("MONGO_URL")
 db = client["premium_bot"]
 
 pending = db["pending"]
