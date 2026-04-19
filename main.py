@@ -98,12 +98,16 @@ def setbuy(msg):
     bot.reply_to(msg, "Buy link updated")
 
 @bot.message_handler(commands=['addfolder'])
-def addfolder(msg):
-    if msg.from_user.id != ADMIN_ID:
+def set_folder(msg):
+    parts = msg.text.split(" ", 1)
+
+    if len(parts) < 2 or not parts[1].strip():
+        bot.reply_to(msg, "❌ Folder name missing!\nExample: /setfolder myfolder")
         return
-    name = msg.text.split(" ",1)[1]
-    add_folder(name)
-    bot.reply_to(msg, "Folder added")
+
+    current_folder = parts[1].strip()
+
+    bot.reply_to(msg, f"✅ Folder set: {current_folder}")
 
 @bot.message_handler(commands=['addvideo'])
 def set_folder(msg):
