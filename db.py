@@ -1,4 +1,5 @@
 from pymongo import MongoClient
+import time
 
 client = MongoClient("YOUR_MONGO_URL")
 db = client["premium_bot"]
@@ -6,6 +7,19 @@ db = client["premium_bot"]
 pending = db["pending"]
 approved = db["approved"]
 premium = db["premium"]
+temp_access = db["temp_access"]
+
+
+# ================= PREMIUM =================
+def add_premium(user_id):
+    premium.update_one(
+        {"user_id": user_id},
+        {"$set": {"premium": True}},
+        upsert=True
+    )
+
+def is_premium(user_id):
+    return premium.find_one({"user_id": user_id}) is not None
 
 
 # ================= PENDING =================
@@ -36,13 +50,18 @@ def get_key(user_id):
     return data["key"] if data else None
 
 
-# ================= PREMIUM =================
-def add_premium(user_id):
-    premium.update_one(
+# ================= TEMP ACCESS (15 MIN) =================
+def give_temp_access(user_id):
+    temp_access.update_one(
         {"user_id": user_id},
-        {"$set": {"premium": True}},
+        {"$set": {"start_time": time.time()}},
         upsert=True
     )
 
-def is_premium(user_id):
-    return premium.find_one({"user_id": user_id}) is not None
+def can_access(user_id):
+    data = temp_access.find_one({"user_id": user_id})
+
+    if not data:
+        return False
+
+    return (time.time() - data["start_time"]) <= 900  # 15 min
