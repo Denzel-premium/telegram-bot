@@ -13,8 +13,3 @@ MONGO_URL = os.getenv("MONGO_URL")
 DEFAULT_START = "👋 Welcome to Premium Bot"
 DEFAULT_PRICE = "29"
 
-if not TOKEN:
-    raise Exception("❌ BOT_TOKEN missing in Railway ENV")
-
-if not ADMIN_ID:
-    raise Exception("❌ ADMIN_ID missing in Railway ENV")
