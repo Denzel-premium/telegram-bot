@@ -1,8 +1,12 @@
 import os
 
-TOKEN = os.getenv("TOKEN")
+# ================= TELEGRAM =================
+TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
-MONGO_URL = os.getenv("MONGO_URL")
 
-DEFAULT_START = "Welcome to Premium Bot"
+# ================= DEFAULT VALUES =================
+DEFAULT_START = "👋 Welcome to Premium Bot"
 DEFAULT_PRICE = "29"
+
+# ================= MONGO =================
+MONGO_URL = os.getenv("MONGO_URL")
