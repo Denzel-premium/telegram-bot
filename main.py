@@ -2,7 +2,6 @@ import telebot
 import random
 import threading
 import time
-from telebot.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import TOKEN, ADMIN_ID
 from db import *
@@ -14,22 +13,26 @@ bot = telebot.TeleBot(TOKEN)
 @bot.message_handler(commands=['start'])
 def start(msg):
 
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    text = get_config("start_text", "👋 Welcome to Premium Bot")
+    price = get_config("price", "29")
+    link = get_config("buy_link", "https://google.com")
+
+    kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("📂 Video List")
 
-    inline = InlineKeyboardMarkup()
-    inline.add(InlineKeyboardButton("💰 Buy Premium", callback_data="buy"))
+    inline = telebot.types.InlineKeyboardMarkup()
+    inline.add(telebot.types.InlineKeyboardButton(f"💰 Buy ₹{price}", url=link))
+    inline.add(telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid"))
 
-    bot.send_message(msg.chat.id, "👋 Welcome to Premium Bot", reply_markup=kb)
-    bot.send_message(msg.chat.id, "👇 Buy Premium:", reply_markup=inline)
+    bot.send_message(msg.chat.id, f"{text}\n💰 Price: ₹{price}", reply_markup=kb)
+    bot.send_message(msg.chat.id, "👇 Buy Premium", reply_markup=inline)
 
 
-# ================= BUY =================
-@bot.callback_query_handler(func=lambda c: c.data == "buy")
-def buy(call):
-
+# ================= PAID BUTTON =================
+@bot.callback_query_handler(func=lambda c: c.data == "paid")
+def paid(call):
     bot.send_message(call.message.chat.id,
-        "💳 Payment karo aur screenshot yaha bhejo 📸"
+        "📸 Payment screenshot yaha bhejo"
     )
 
 
@@ -40,37 +43,81 @@ def ss(msg):
     add_pending(msg.from_user.id, msg.photo[-1].file_id)
 
     bot.send_message(msg.chat.id,
-        "⏳ Screenshot received. Wait for admin approval..."
+        "⏳ Screenshot received, wait for admin approval"
     )
 
 
-# ================= ADMIN REQUESTS =================
+# ================= ADMIN PANEL =================
+@bot.message_handler(commands=['admin'])
+def admin(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    bot.send_message(msg.chat.id,
+        "🛠 ADMIN PANEL\n\n"
+        "/setstart text\n"
+        "/setprice 29\n"
+        "/setbuy https://link.com\n"
+        "/requests"
+    )
+
+
+# ================= SET START TEXT =================
+@bot.message_handler(commands=['setstart'])
+def setstart(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    set_config("start_text", msg.text.replace("/setstart ",""))
+    bot.reply_to(msg, "✅ Start updated")
+
+
+# ================= SET PRICE =================
+@bot.message_handler(commands=['setprice'])
+def setprice(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    set_config("price", msg.text.split(" ",1)[1])
+    bot.reply_to(msg, "✅ Price updated")
+
+
+# ================= SET BUY LINK =================
+@bot.message_handler(commands=['setbuy'])
+def setbuy(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    set_config("buy_link", msg.text.split(" ",1)[1])
+    bot.reply_to(msg, "✅ Buy link updated")
+
+
+# ================= REQUESTS =================
 @bot.message_handler(commands=['requests'])
 def requests(msg):
 
     if msg.from_user.id != ADMIN_ID:
-        bot.send_message(msg.chat.id, "❌ Not allowed")
         return
 
     data = get_pending()
-
-    if not data:
-        bot.send_message(msg.chat.id, "No pending requests")
-        return
 
     for d in data:
 
         uid = d["user_id"]
         file_id = d["file_id"]
 
-        kb = InlineKeyboardMarkup()
+        kb = telebot.types.InlineKeyboardMarkup()
         kb.add(
-            InlineKeyboardButton("✅ Approve", callback_data=f"apv_{uid}"),
-            InlineKeyboardButton("❌ Reject", callback_data=f"rej_{uid}")
+            telebot.types.InlineKeyboardButton("✅ Approve", callback_data=f"apv_{uid}"),
+            telebot.types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_{uid}")
         )
 
         bot.send_photo(msg.chat.id, file_id,
-            caption=f"User ID: {uid}",
+            caption=f"User: {uid}",
             reply_markup=kb
         )
 
@@ -80,12 +127,11 @@ def requests(msg):
 def approve(call):
 
     if call.from_user.id != ADMIN_ID:
-        bot.answer_callback_query(call.id, "❌ Not allowed")
         return
 
     uid = int(call.data.split("_")[1])
 
-    key = "PREM" + str(random.randint(1000,9999))
+    key = "VIP1234"   # fixed key
 
     set_approved(uid, key)
     add_premium(uid)
@@ -95,23 +141,18 @@ def approve(call):
         f"🎉 Approved!\n🔑 Key: {key}\nUse /unlock {key}"
     )
 
-    bot.answer_callback_query(call.id, "Approved")
-
 
 # ================= REJECT =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("rej_"))
 def reject(call):
 
     if call.from_user.id != ADMIN_ID:
-        bot.answer_callback_query(call.id, "❌ Not allowed")
         return
 
     uid = int(call.data.split("_")[1])
 
     remove_pending(uid)
-
     bot.send_message(uid, "❌ Rejected")
-    bot.answer_callback_query(call.id, "Rejected")
 
 
 # ================= UNLOCK =================
@@ -125,9 +166,9 @@ def unlock(msg):
         return
 
     key = parts[1].strip()
-    real_key = get_key(msg.from_user.id)
+    real = get_key(msg.from_user.id)
 
-    if key == real_key:
+    if key == real:
         add_premium(msg.from_user.id)
         bot.reply_to(msg, "✅ Premium Activated!")
     else:
@@ -146,7 +187,7 @@ def videos(msg):
 
     threading.Thread(target=auto_expire, args=(msg.from_user.id,)).start()
 
-    bot.send_message(msg.chat.id, "🎬 Access granted for 15 minutes ⏳")
+    bot.send_message(msg.chat.id, "🎬 Access granted for 15 minutes")
 
 
 # ================= AUTO EXPIRE =================
@@ -155,25 +196,6 @@ def auto_expire(user_id):
     temp_access.delete_one({"user_id": user_id})
 
 
-# ================= ACCESS CHECK =================
-def can_access(user_id):
-    data = temp_access.find_one({"user_id": user_id})
-    if not data:
-        return False
-    return (time.time() - data.get("start_time", 0)) <= 900
-
-
-# ================= VIDEO SEND =================
-@bot.callback_query_handler(func=lambda c: c.data.startswith("folder_"))
-def send_videos(call):
-
-    if not can_access(call.from_user.id):
-        bot.answer_callback_query(call.id, "⏳ Access expired")
-        return
-
-    bot.send_message(call.message.chat.id, "🎬 Here are your videos")
-
-
 # ================= RUN =================
 print("Bot Running...")
-bot.polling()
+bot.infinity_polling(skip_pending=True)
