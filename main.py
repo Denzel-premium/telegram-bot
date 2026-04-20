@@ -8,6 +8,10 @@ from db import *
 
 bot = telebot.TeleBot(TOKEN)
 
+# ================= FOLDER SYSTEM STORAGE =================
+folders = {}          # folder_name -> [video_file_ids]
+pending_folder = {}   # admin upload tracking
+
 
 # ================= START =================
 @bot.message_handler(commands=['start'])
@@ -61,6 +65,10 @@ def admin(msg):
         "💰 /setprice - Set premium price\n"
         "🔗 /setbuy - Set payment URL\n"
         "📥 /requests - View payments\n"
+        "📁 /addfolder - Create Folder\n"
+        "📤 /upload - Upload Video to Folder\n"
+        "📂 /folders - View Folders\n"
+        "▶️ /open - Open Folder Videos\n"
     )
 
     bot.send_message(msg.chat.id, text)
@@ -134,7 +142,7 @@ def approve(call):
 
     uid = int(call.data.split("_")[1])
 
-    key = "VIP1234"   # fixed key
+    key = "VIP1234"
 
     set_approved(uid, key)
     add_premium(uid)
@@ -197,6 +205,98 @@ def videos(msg):
 def auto_expire(user_id):
     time.sleep(900)
     temp_access.delete_one({"user_id": user_id})
+
+
+# ================= FOLDER SYSTEM =================
+
+@bot.message_handler(commands=['addfolder'])
+def addfolder(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    name = msg.text.replace("/addfolder", "").strip()
+
+    if not name:
+        bot.reply_to(msg, "❌ Use: /addfolder VIP")
+        return
+
+    if name not in folders:
+        folders[name] = []
+
+    bot.reply_to(msg, f"📁 Folder '{name}' created ✅")
+
+
+@bot.message_handler(commands=['folders'])
+def show_folders(msg):
+
+    if not folders:
+        bot.send_message(msg.chat.id, "❌ No folders found")
+        return
+
+    text = "📂 Available Folders:\n\n"
+    for f in folders:
+        text += f"👉 {f}\n"
+
+    text += "\nUse /open foldername"
+
+    bot.send_message(msg.chat.id, text)
+
+
+@bot.message_handler(commands=['upload'])
+def upload_folder(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    name = msg.text.replace("/upload", "").strip()
+
+    if name not in folders:
+        bot.reply_to(msg, "❌ Folder not found. Create /addfolder")
+        return
+
+    pending_folder[msg.from_user.id] = name
+    bot.reply_to(msg, f"📤 Now send video for folder: {name}")
+
+
+@bot.message_handler(commands=['open'])
+def open_folder(msg):
+
+    name = msg.text.replace("/open", "").strip()
+
+    if name not in folders:
+        bot.send_message(msg.chat.id, "❌ Folder not found")
+        return
+
+    if len(folders[name]) == 0:
+        bot.send_message(msg.chat.id, "❌ No videos in this folder")
+        return
+
+    for vid in folders[name]:
+        bot.send_video(msg.chat.id, vid)
+
+
+@bot.message_handler(content_types=['video'])
+def save_video(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    uid = msg.from_user.id
+
+    if uid not in pending_folder:
+        return
+
+    folder = pending_folder[uid]
+
+    if folder not in folders:
+        folders[folder] = []
+
+    folders[folder].append(msg.video.file_id)
+
+    del pending_folder[uid]
+
+    bot.send_message(msg.chat.id, f"✅ Video saved in '{folder}'")
 
 
 # ================= RUN =================
