@@ -23,24 +23,20 @@ def start(msg):
 
     text = get_config("start_text", "👋 Welcome to Premium Bot")
     price = get_config("price") or "29"
-
-    link = f"upi://pay?pa=YOURUPI@okaxis&pn=Premium&am={price}&cu=INR"
+    upi_id = get_config("upi_id") or "yourupi@okaxis"
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("📂 Video List", "📥 Download")
 
+    link = f"upi://pay?pa={upi_id}&pn=Premium&am={price}&cu=INR"
+
     inline = telebot.types.InlineKeyboardMarkup()
-
-    price = get_config("price", "29")
-    link = get_config("buy_link", "https://google.com")
-
     inline.add(
         telebot.types.InlineKeyboardButton(f"💰 Buy ₹{price}", url=link)
-)
-
+    )
     inline.add(
         telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid")
-)
+    )
 
     bot.send_message(msg.chat.id, f"{text}\n💰 Price: ₹{price}", reply_markup=kb)
     bot.send_message(msg.chat.id, "👇 Buy Premium", reply_markup=inline)
