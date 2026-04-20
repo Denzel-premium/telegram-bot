@@ -23,8 +23,6 @@ def start(msg):
 
     text = get_config("start_text") or "👋 Welcome"
     price = get_config("price") or "29"
-    upi_id = get_config("upi_id") or "yourupi@okaxis"
-
     link = get_config("buy_link") or "https://google.com"
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -117,11 +115,11 @@ def setbuy(msg):
     if msg.from_user.id != ADMIN_ID:
         return
 
-    upi = msg.text.split(" ",1)[1].strip()
+    url = msg.text.split(" ", 1)[1].strip()
 
-    set_config("upi_id", upi)
+    set_config("buy_link", url)
 
-    bot.reply_to(msg, "✅ UPI ID updated")
+    bot.reply_to(msg, "✅ Buy URL updated")
 
 
 # ================= REQUESTS =================
