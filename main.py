@@ -27,7 +27,7 @@ def start(msg):
     link = get_config("buy_link") or "https://google.com"
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("📂 Video List", "📥 Download")
+    kb.add("📥 Download")   # ✅ Video List removed
 
     inline = telebot.types.InlineKeyboardMarkup()
 
@@ -68,7 +68,7 @@ def ss(msg):
     )
 
 
-# ================= ADMIN PANEL (UNCHANGED) =================
+# ================= ADMIN PANEL =================
 @bot.message_handler(commands=['admin'])
 def admin(msg):
 
@@ -155,12 +155,11 @@ def approve(call):
 
     uid = int(call.data.split("_")[1])
 
-    # 🔥 direct premium activate (NO KEY)
     add_premium(uid)
     remove_pending(uid)
 
     bot.send_message(uid,
-        "🎉 Approved!\n🔥 Premium Activated Successfully\n📂 Now open Video List"
+        "🎉 Approved!\n🔥 Premium Activated Successfully\n📂 Now open Download"
     )
 
 
@@ -194,28 +193,12 @@ def unlock(msg):
         bot.reply_to(msg, "❌ Invalid Key")
 
 
-# ================= VIDEO LIST =================
-@bot.message_handler(func=lambda m: m.text == "📂 Video List")
-def videos(msg):
-
-    if not is_premium(msg.from_user.id):
-        bot.send_message(msg.chat.id, "❌ Premium required")
-        return
-
-    give_temp_access(msg.from_user.id)
-
-    threading.Thread(target=auto_expire, args=(msg.from_user.id,)).start()
-
-    bot.send_message(msg.chat.id, "🎬 Access granted for 15 minutes")
-
-
 # ================= AUTO EXPIRE =================
 def auto_expire(user_id):
-    time.sleep(900)  # 15 min wait
+    time.sleep(900)
 
     temp_access.pop(user_id, None)
 
-    # videos delete
     if user_id in sent_videos:
         for mid in sent_videos[user_id]:
             try:
@@ -264,6 +247,7 @@ def openfolder(msg):
     for v in folders.get(name, []):
         m = bot.send_video(msg.chat.id, v)
         sent_videos[msg.from_user.id].append(m.message_id)
+
 
 @bot.message_handler(commands=['delfolder'])
 def delfolder(msg):
@@ -326,7 +310,7 @@ def savevideo(msg):
     bot.send_message(msg.chat.id, f"✅ Added to {folder}")
 
 
-# ================= 📥 DOWNLOAD (NEW FEATURE) =================
+# ================= 📥 DOWNLOAD =================
 @bot.message_handler(func=lambda m: m.text == "📥 Download")
 def download_menu(msg):
 
@@ -336,7 +320,9 @@ def download_menu(msg):
         bot.send_message(msg.chat.id, "❌ Premium required")
         return
 
-    temp_access[user_id] = time.time() + 900  # 15 min
+    # ✅ 15 min access + auto expire
+    temp_access[user_id] = time.time() + 900
+    threading.Thread(target=auto_expire, args=(user_id,)).start()
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
 
@@ -368,6 +354,7 @@ def open_from_menu(msg):
     for v in folders[name]:
         m = bot.send_video(msg.chat.id, v)
         sent_videos[user_id].append(m.message_id)
+
 
 # ================= RUN =================
 print("Bot Running...")
