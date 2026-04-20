@@ -370,7 +370,7 @@ def open_from_menu(msg):
     sent_videos.setdefault(user_id, [])
 
     for v in folders[name]:
-    m = bot.send_video(msg.chat.id, v)
+        m = bot.send_video(msg.chat.id, v)
     sent_videos[user_id].append(m.message_id)
 
 # ================= RUN =================
