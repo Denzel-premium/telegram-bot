@@ -207,6 +207,11 @@ def addfolder(msg):
         return
 
     name = msg.text.replace("/addfolder", "").strip()
+
+    if not name:
+        bot.reply_to(msg, "❌ Folder name required\nExample: /addfolder VIP")
+        return
+
     folders[name] = []
 
     bot.reply_to(msg, f"📁 Folder '{name}' created")
