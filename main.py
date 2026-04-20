@@ -25,7 +25,7 @@ def start(msg):
     price = get_config("price") or "29"
     upi_id = get_config("upi_id") or "yourupi@okaxis"
 
-    # 🔥 SAFE UPI LINK
+    # safe UPI link
     link = f"upi://pay?pa={upi_id}&pn=Premium&am={price}&cu=INR"
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -33,25 +33,33 @@ def start(msg):
 
     inline = telebot.types.InlineKeyboardMarkup()
 
-    try:
-        btn1 = telebot.types.InlineKeyboardButton(
+    # 🔥 BUTTON 1
+    inline.add(
+        telebot.types.InlineKeyboardButton(
             f"💰 Buy ₹{price}",
             url=link
         )
+    )
 
-        btn2 = telebot.types.InlineKeyboardButton(
+    # 🔥 BUTTON 2
+    inline.add(
+        telebot.types.InlineKeyboardButton(
             "💳 I Have Paid",
             callback_data="paid"
         )
+    )
 
-        inline.add(btn1)
-        inline.add(btn2)
+    bot.send_message(
+        msg.chat.id,
+        f"{text}\n💰 Price: ₹{price}",
+        reply_markup=kb
+    )
 
-    except Exception as e:
-        print("BUTTON ERROR:", e)
-
-    bot.send_message(msg.chat.id, f"{text}\n💰 Price: ₹{price}", reply_markup=kb)
-    bot.send_message(msg.chat.id, "👇 Buy Premium", reply_markup=inline)
+    bot.send_message(
+        msg.chat.id,
+        "👇 Buy Premium",
+        reply_markup=inline
+    )
 
 
 # ================= PAID BUTTON =================
