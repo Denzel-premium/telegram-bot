@@ -74,6 +74,7 @@ def admin(msg):
         "🛑 /stopupload - Stop upload mode\n"
         "📂 /folders - View Folders\n"
         "▶️ /open - Open Folder Videos\n"
+        "🗑 /delfolder - Delete Folder\n"
     )
 
     bot.send_message(msg.chat.id, text)
@@ -228,6 +229,24 @@ def openfolder(msg):
 
     for v in folders.get(name, []):
         bot.send_video(msg.chat.id, v)
+
+@bot.message_handler(commands=['delfolder'])
+def delfolder(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    name = msg.text.replace("/delfolder", "").strip()
+
+    if not name:
+        bot.reply_to(msg, "❌ Use /delfolder FOLDER_NAME")
+        return
+
+    if name in folders:
+        folders.pop(name)
+        bot.reply_to(msg, f"🗑 Folder '{name}' deleted")
+    else:
+        bot.reply_to(msg, "❌ Folder not found")
 
 
 # ================= MULTI UPLOAD =================
