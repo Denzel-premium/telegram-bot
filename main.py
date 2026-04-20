@@ -132,19 +132,17 @@ def requests(msg):
 
 
 # ================= APPROVE =================
-@bot.callback_query_handler(func=lambda c: c.data.startswith("apv_"))
+@@bot.callback_query_handler(func=lambda c: c.data.startswith("apv_"))
 def approve(call):
 
     uid = int(call.data.split("_")[1])
 
-    key = "VIP1234"
-
-    set_approved(uid, key)
+    # 🔥 direct premium activate (NO KEY)
     add_premium(uid)
     remove_pending(uid)
 
     bot.send_message(uid,
-        f"🎉 Approved!\n🔑 Key: {key}\nUse /unlock {key}"
+        "🎉 Approved!\n🔥 Premium Activated Successfully\n📂 Now open Video List"
     )
 
 
