@@ -21,22 +21,30 @@ temp_access = {}  # user_id -> expiry timestamp
 @bot.message_handler(commands=['start'])
 def start(msg):
 
-    text = get_config("start_text", "👋 Welcome to Premium Bot")
+    text = get_config("start_text") or "👋 Welcome"
     price = get_config("price") or "29"
-    upi_id = get_config("upi_id") or "yourupi@okaxis"
+
+    upi_id = get_config("upi_id")
+    if not upi_id:
+        upi_id = "yourupi@okaxis"
+
+    link = f"upi://pay?pa={upi_id}&pn=Premium&am={price}&cu=INR"
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("📂 Video List", "📥 Download")
 
-    link = f"upi://pay?pa={upi_id}&pn=Premium&am={price}&cu=INR"
-
     inline = telebot.types.InlineKeyboardMarkup()
-    inline.add(
-        telebot.types.InlineKeyboardButton(f"💰 Buy ₹{price}", url=link)
+
+    btn1 = telebot.types.InlineKeyboardButton(
+        f"💰 Buy ₹{price}", url=link
     )
-    inline.add(
-        telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid")
+
+    btn2 = telebot.types.InlineKeyboardButton(
+        "💳 I Have Paid", callback_data="paid"
     )
+
+    inline.add(btn1)
+    inline.add(btn2)
 
     bot.send_message(msg.chat.id, f"{text}\n💰 Price: ₹{price}", reply_markup=kb)
     bot.send_message(msg.chat.id, "👇 Buy Premium", reply_markup=inline)
