@@ -34,7 +34,7 @@ def start(msg):
     link = get_config("buy_link", "https://google.com")
 
     inline.add(
-        telebot.types.InlineKeyboardButton(f"💰 Buy ₹{price}", url=link)
+        telebot.types.InlineKeyboardButton(f"💰 Buy ₹{29}", url=link)
 )
 
     inline.add(
