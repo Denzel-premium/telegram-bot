@@ -109,10 +109,15 @@ def setprice(msg):
 
 @bot.message_handler(commands=['setbuy'])
 def setbuy(msg):
+
     if msg.from_user.id != ADMIN_ID:
         return
-    set_config("buy_link", msg.text.split(" ",1)[1])
-    bot.reply_to(msg, "✅ Buy link updated")
+
+    upi = msg.text.split(" ",1)[1].strip()
+
+    set_config("upi_id", upi)
+
+    bot.reply_to(msg, "✅ UPI ID updated")
 
 
 # ================= REQUESTS =================
