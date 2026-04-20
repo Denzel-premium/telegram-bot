@@ -11,6 +11,7 @@ bot = telebot.TeleBot(TOKEN)
 # ================= FOLDER SYSTEM STORAGE =================
 folders = {}          # folder_name -> [video_file_ids]
 pending_folder = {}   # admin upload tracking
+upload_mode = {}      # admin_id -> folder (MULTI UPLOAD MODE)
 
 
 # ================= START =================
@@ -66,7 +67,8 @@ def admin(msg):
         "🔗 /setbuy - Set payment URL\n"
         "📥 /requests - View payments\n"
         "📁 /addfolder - Create Folder\n"
-        "📤 /upload - Upload Video to Folder\n"
+        "📤 /upload - Upload Videos (multi mode)\n"
+        "🛑 /stopupload - Stop upload mode\n"
         "📂 /folders - View Folders\n"
         "▶️ /open - Open Folder Videos\n"
     )
@@ -74,35 +76,27 @@ def admin(msg):
     bot.send_message(msg.chat.id, text)
 
 
-# ================= SET START TEXT =================
+# ================= SET COMMANDS =================
 @bot.message_handler(commands=['setstart'])
 def setstart(msg):
-
     if msg.from_user.id != ADMIN_ID:
         return
-
     set_config("start_text", msg.text.replace("/setstart ",""))
     bot.reply_to(msg, "✅ Start updated")
 
 
-# ================= SET PRICE =================
 @bot.message_handler(commands=['setprice'])
 def setprice(msg):
-
     if msg.from_user.id != ADMIN_ID:
         return
-
     set_config("price", msg.text.split(" ",1)[1])
     bot.reply_to(msg, "✅ Price updated")
 
 
-# ================= SET BUY LINK =================
 @bot.message_handler(commands=['setbuy'])
 def setbuy(msg):
-
     if msg.from_user.id != ADMIN_ID:
         return
-
     set_config("buy_link", msg.text.split(" ",1)[1])
     bot.reply_to(msg, "✅ Buy link updated")
 
@@ -218,33 +212,45 @@ def addfolder(msg):
     name = msg.text.replace("/addfolder", "").strip()
 
     if not name:
-        bot.reply_to(msg, "❌ Use: /addfolder VIP")
+        bot.reply_to(msg, "❌ Use /addfolder VIP")
         return
 
-    if name not in folders:
-        folders[name] = []
+    folders[name] = folders.get(name, [])
 
-    bot.reply_to(msg, f"📁 Folder '{name}' created ✅")
+    bot.reply_to(msg, f"📁 Folder '{name}' created")
 
 
 @bot.message_handler(commands=['folders'])
-def show_folders(msg):
+def showfolders(msg):
 
     if not folders:
-        bot.send_message(msg.chat.id, "❌ No folders found")
+        bot.send_message(msg.chat.id, "❌ No folders")
         return
 
-    text = "📂 Available Folders:\n\n"
+    text = "📂 Folders:\n\n"
     for f in folders:
         text += f"👉 {f}\n"
-
-    text += "\nUse /open foldername"
 
     bot.send_message(msg.chat.id, text)
 
 
+@bot.message_handler(commands=['open'])
+def openfolder(msg):
+
+    name = msg.text.replace("/open", "").strip()
+
+    if name not in folders:
+        bot.send_message(msg.chat.id, "❌ Not found")
+        return
+
+    for v in folders[name]:
+        bot.send_video(msg.chat.id, v)
+
+
+# ================= MULTI UPLOAD MODE =================
+
 @bot.message_handler(commands=['upload'])
-def upload_folder(msg):
+def upload(msg):
 
     if msg.from_user.id != ADMIN_ID:
         return
@@ -252,51 +258,44 @@ def upload_folder(msg):
     name = msg.text.replace("/upload", "").strip()
 
     if name not in folders:
-        bot.reply_to(msg, "❌ Folder not found. Create /addfolder")
+        bot.reply_to(msg, "❌ Folder not found")
         return
 
-    pending_folder[msg.from_user.id] = name
-    bot.reply_to(msg, f"📤 Now send video for folder: {name}")
+    upload_mode[msg.from_user.id] = name
+
+    bot.reply_to(msg,
+        f"📤 Upload mode ON for {name}\nSend multiple videos\n/stopupload to stop"
+    )
 
 
-@bot.message_handler(commands=['open'])
-def open_folder(msg):
+@bot.message_handler(commands=['stopupload'])
+def stopupload(msg):
 
-    name = msg.text.replace("/open", "").strip()
-
-    if name not in folders:
-        bot.send_message(msg.chat.id, "❌ Folder not found")
+    if msg.from_user.id != ADMIN_ID:
         return
 
-    if len(folders[name]) == 0:
-        bot.send_message(msg.chat.id, "❌ No videos in this folder")
-        return
+    upload_mode.pop(msg.from_user.id, None)
 
-    for vid in folders[name]:
-        bot.send_video(msg.chat.id, vid)
+    bot.reply_to(msg, "🛑 Upload stopped")
 
 
+# ================= VIDEO SAVE =================
 @bot.message_handler(content_types=['video'])
-def save_video(msg):
+def savevideo(msg):
 
     if msg.from_user.id != ADMIN_ID:
         return
 
     uid = msg.from_user.id
 
-    if uid not in pending_folder:
+    if uid not in upload_mode:
         return
 
-    folder = pending_folder[uid]
+    folder = upload_mode[uid]
 
-    if folder not in folders:
-        folders[folder] = []
+    folders.setdefault(folder, []).append(msg.video.file_id)
 
-    folders[folder].append(msg.video.file_id)
-
-    del pending_folder[uid]
-
-    bot.send_message(msg.chat.id, f"✅ Video saved in '{folder}'")
+    bot.send_message(msg.chat.id, f"✅ Added to {folder}")
 
 
 # ================= RUN =================
