@@ -24,7 +24,7 @@ def start(msg):
     text = get_config("start_text", "👋 Welcome to Premium Bot")
     price = get_config("price") or "29"
 
-link = f"upi://pay?pa=YOURUPI@okaxis&pn=Premium&am={price}&cu=INR"
+    link = f"upi://pay?pa=YOURUPI@okaxis&pn=Premium&am={price}&cu=INR"
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("📂 Video List", "📥 Download")
