@@ -7,13 +7,15 @@ MONGO_URL = os.getenv("MONGO_URL")
 client = MongoClient(MONGO_URL)
 db = client["premium_bot"]
 
+# ================= COLLECTIONS =================
 pending = db["pending"]
 approved = db["approved"]
 premium = db["premium"]
 temp_access = db["temp_access"]
 config = db["config"]
+folders_col = db["folders"]   # 🔥 folder system added
 
-# ---------------- CONFIG ----------------
+# ================= CONFIG =================
 def set_config(key, value):
     config.update_one(
         {"key": key},
@@ -25,7 +27,7 @@ def get_config(key, default=None):
     data = config.find_one({"key": key})
     return data["value"] if data else default
 
-# ---------------- PAYMENT ----------------
+# ================= PAYMENT =================
 def add_pending(user_id, file_id):
     pending.update_one(
         {"user_id": user_id},
@@ -39,7 +41,7 @@ def get_pending():
 def remove_pending(user_id):
     pending.delete_one({"user_id": user_id})
 
-# ---------------- APPROVAL ----------------
+# ================= APPROVAL =================
 def set_approved(user_id, key):
     approved.update_one(
         {"user_id": user_id},
@@ -51,7 +53,7 @@ def get_key(user_id):
     data = approved.find_one({"user_id": user_id})
     return data["key"] if data else None
 
-# ---------------- PREMIUM ----------------
+# ================= PREMIUM =================
 def add_premium(user_id):
     premium.update_one(
         {"user_id": user_id},
@@ -62,7 +64,7 @@ def add_premium(user_id):
 def is_premium(user_id):
     return premium.find_one({"user_id": user_id}) is not None
 
-# ---------------- TEMP ACCESS ----------------
+# ================= TEMP ACCESS =================
 def give_temp_access(user_id):
     temp_access.update_one(
         {"user_id": user_id},
@@ -76,10 +78,14 @@ def can_access(user_id):
         return False
     return (time.time() - data["start_time"]) <= 900
 
+# ================= FOLDER SYSTEM (FIXED + SAFE) =================
 
-# ======================== ADDED ONLY (FOLDER SYSTEM) ========================
-
-folders_col = db["folders"]
+def create_folder(name):
+    folders_col.update_one(
+        {"name": name},
+        {"$set": {"videos": []}},
+        upsert=True
+    )
 
 def add_video(folder, file_id):
     folders_col.update_one(
@@ -90,9 +96,7 @@ def add_video(folder, file_id):
 
 def get_folder(folder):
     data = folders_col.find_one({"name": folder})
-    if data:
-        return data.get("videos", [])
-    return []
+    return data.get("videos", []) if data else []
 
 def list_folders():
     return [f["name"] for f in folders_col.find()]
