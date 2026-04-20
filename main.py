@@ -48,7 +48,7 @@ def ss(msg):
 
 
 # ================= ADMIN PANEL =================
-@@bot.message_handler(commands=['admin'])
+@bot.message_handler(commands=['admin'])
 def admin(msg):
 
     if int(msg.from_user.id) != int(ADMIN_ID):
