@@ -211,9 +211,11 @@ def videos(msg):
 
 # ================= AUTO EXPIRE =================
 def auto_expire(user_id):
-    time.sleep(900)
+    time.sleep(900)  # 15 min wait
+
     temp_access.pop(user_id, None)
 
+    # videos delete
     if user_id in sent_videos:
         for mid in sent_videos[user_id]:
             try:
@@ -356,22 +358,16 @@ def open_from_menu(msg):
     user_id = msg.from_user.id
 
     if user_id not in temp_access or time.time() > temp_access[user_id]:
-        bot.send_message(msg.chat.id,
-            "❌ Access expired\n👉 Click 📥 Download again"
-        )
+        bot.send_message(msg.chat.id, "❌ Access expired\n👉 Click Download again")
         return
 
     name = msg.text.replace("📂 ", "").strip()
 
-    if name not in folders:
-        bot.send_message(msg.chat.id, "❌ Not found")
-        return
+    sent_videos.setdefault(user_id, [])
 
-sent_videos.setdefault(user_id, [])
-
-for v in folders[name]:
-    m = bot.send_video(msg.chat.id, v)
-    sent_videos[user_id].append(m.message_id)
+    for v in folders[name]:
+        m = bot.send_video(msg.chat.id, v)
+        sent_videos[user_id].append(m.message_id)
 
 # ================= RUN =================
 print("Bot Running...")
