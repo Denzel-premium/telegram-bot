@@ -360,4 +360,8 @@ def open_from_menu(msg):
 
 # ================= RUN =================
 print("Bot Running...")
-bot.infinity_polling(skip_pending=True)
+bot.infinity_polling(
+    skip_pending=True,
+    timeout=20,
+    long_polling_timeout=20
+)
