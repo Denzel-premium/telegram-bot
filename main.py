@@ -22,8 +22,9 @@ temp_access = {}  # user_id -> expiry timestamp
 def start(msg):
 
     text = get_config("start_text", "👋 Welcome to Premium Bot")
-    price = get_config("price", "29")
-    link = get_config("buy_link", "https://google.com")
+    price = get_config("price") or "29"
+
+link = f"upi://pay?pa=YOURUPI@okaxis&pn=Premium&am={price}&cu=INR"
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("📂 Video List", "📥 Download")
@@ -34,7 +35,7 @@ def start(msg):
     link = get_config("buy_link", "https://google.com")
 
     inline.add(
-        telebot.types.InlineKeyboardButton(f"💰 Buy ₹{29}", url=link)
+        telebot.types.InlineKeyboardButton(f"💰 Buy ₹{price}", url=link)
 )
 
     inline.add(
