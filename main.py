@@ -12,6 +12,7 @@ bot = telebot.TeleBot(TOKEN)
 folders = {}          # folder_name -> [video_file_ids]
 pending_folder = {}   # admin upload tracking
 upload_mode = {}      # admin_id -> folder (MULTI UPLOAD MODE)
+sent_videos = {}
 
 # ================= NEW: TEMP ACCESS SYSTEM =================
 temp_access = {}  # user_id -> expiry timestamp
@@ -213,6 +214,15 @@ def auto_expire(user_id):
     time.sleep(900)
     temp_access.pop(user_id, None)
 
+    if user_id in sent_videos:
+        for mid in sent_videos[user_id]:
+            try:
+                bot.delete_message(user_id, mid)
+            except:
+                pass
+
+        sent_videos.pop(user_id, None)
+
 
 # ================= FOLDER SYSTEM =================
 @bot.message_handler(commands=['addfolder'])
@@ -247,8 +257,11 @@ def openfolder(msg):
 
     name = msg.text.replace("/open", "").strip()
 
+    sent_videos.setdefault(msg.from_user.id, [])
+
     for v in folders.get(name, []):
-        bot.send_video(msg.chat.id, v)
+        m = bot.send_video(msg.chat.id, v)
+        sent_videos[msg.from_user.id].append(m.message_id)
 
 @bot.message_handler(commands=['delfolder'])
 def delfolder(msg):
@@ -354,9 +367,11 @@ def open_from_menu(msg):
         bot.send_message(msg.chat.id, "❌ Not found")
         return
 
-    for v in folders[name]:
-        bot.send_video(msg.chat.id, v)
+    sent_videos.setdefault(user_id, [])
 
+    for v in folders[name]:
+    m = bot.send_video(msg.chat.id, v)
+    sent_videos[user_id].append(m.message_id)
 
 # ================= RUN =================
 print("Bot Running...")
