@@ -367,10 +367,10 @@ def open_from_menu(msg):
         bot.send_message(msg.chat.id, "❌ Not found")
         return
 
-    sent_videos.setdefault(user_id, [])
+sent_videos.setdefault(user_id, [])
 
-    for v in folders[name]:
-        m = bot.send_video(msg.chat.id, v)
+for v in folders[name]:
+    m = bot.send_video(msg.chat.id, v)
     sent_videos[user_id].append(m.message_id)
 
 # ================= RUN =================
