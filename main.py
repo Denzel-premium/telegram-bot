@@ -29,8 +29,17 @@ def start(msg):
     kb.add("📂 Video List", "📥 Download")
 
     inline = telebot.types.InlineKeyboardMarkup()
-    inline.add(telebot.types.InlineKeyboardButton(f"💰 Buy ₹{price}", url=link))
-    inline.add(telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid"))
+
+price = get_config("price", "29")
+link = get_config("buy_link", "https://google.com")
+
+inline.add(
+    telebot.types.InlineKeyboardButton(f"💰 Buy ₹{price}", url=link)
+)
+
+inline.add(
+    telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid")
+)
 
     bot.send_message(msg.chat.id, f"{text}\n💰 Price: ₹{price}", reply_markup=kb)
     bot.send_message(msg.chat.id, "👇 Buy Premium", reply_markup=inline)
