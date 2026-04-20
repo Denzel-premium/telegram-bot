@@ -33,21 +33,19 @@ def start(msg):
 
     inline = telebot.types.InlineKeyboardMarkup()
 
-    # 🔥 BUTTON 1
-    inline.add(
-        telebot.types.InlineKeyboardButton(
-            f"💰 Buy ₹{price}",
-            url=link
-        )
+inline.add(
+    telebot.types.InlineKeyboardButton(
+        f"💰 Buy ₹{price}",
+        url=get_config("buy_link") or "https://google.com"
     )
+)
 
-    # 🔥 BUTTON 2
-    inline.add(
-        telebot.types.InlineKeyboardButton(
-            "💳 I Have Paid",
-            callback_data="paid"
-        )
+inline.add(
+    telebot.types.InlineKeyboardButton(
+        "💳 I Have Paid",
+        callback_data="paid"
     )
+)
 
     bot.send_message(
         msg.chat.id,
