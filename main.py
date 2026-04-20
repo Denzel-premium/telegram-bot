@@ -132,7 +132,7 @@ def requests(msg):
 
 
 # ================= APPROVE =================
-@@bot.callback_query_handler(func=lambda c: c.data.startswith("apv_"))
+@bot.callback_query_handler(func=lambda c: c.data.startswith("apv_"))
 def approve(call):
 
     uid = int(call.data.split("_")[1])
