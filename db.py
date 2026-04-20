@@ -75,3 +75,27 @@ def can_access(user_id):
     if not data:
         return False
     return (time.time() - data["start_time"]) <= 900
+
+
+# ======================== ADDED ONLY (FOLDER SYSTEM) ========================
+
+folders_col = db["folders"]
+
+def add_video(folder, file_id):
+    folders_col.update_one(
+        {"name": folder},
+        {"$push": {"videos": file_id}},
+        upsert=True
+    )
+
+def get_folder(folder):
+    data = folders_col.find_one({"name": folder})
+    if data:
+        return data.get("videos", [])
+    return []
+
+def list_folders():
+    return [f["name"] for f in folders_col.find()]
+
+def delete_folder(folder):
+    folders_col.delete_one({"name": folder})
