@@ -30,15 +30,15 @@ def start(msg):
 
     inline = telebot.types.InlineKeyboardMarkup()
 
-price = get_config("price", "29")
-link = get_config("buy_link", "https://google.com")
+    price = get_config("price", "29")
+    link = get_config("buy_link", "https://google.com")
 
-inline.add(
-    telebot.types.InlineKeyboardButton(f"💰 Buy ₹{price}", url=link)
+    inline.add(
+        telebot.types.InlineKeyboardButton(f"💰 Buy ₹{price}", url=link)
 )
 
-inline.add(
-    telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid")
+    inline.add(
+        telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid")
 )
 
     bot.send_message(msg.chat.id, f"{text}\n💰 Price: ₹{price}", reply_markup=kb)
