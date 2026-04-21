@@ -268,7 +268,6 @@ def download(msg):
 
     user_id = msg.from_user.id
 
-    # ✅ access always allow (no expiry)
     temp_access[user_id] = True
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -307,23 +306,23 @@ def open_folder(msg):
 
     for v in vids:
         m = bot.send_video(msg.chat.id, v["file_id"], protect_content=True)
-        sent_videos[user_id].append(m.message_id)
 
-    # ✅ start auto delete timer
-    threading.Thread(target=auto_expire, args=(user_id,), daemon=True).start()
+        # ✅ FIX: store chat_id + message_id
+        sent_videos[user_id].append((msg.chat.id, m.message_id))
+
+    # ✅ auto delete timer fixed
+    threading.Timer(900, auto_expire, args=(user_id,)).start()
 
 
-# ================= AUTO DELETE ONLY =================
+# ================= AUTO DELETE FIXED =================
 def auto_expire(user_id):
 
-    time.sleep(900)  # 15 min
-
     if user_id in sent_videos:
-        for mid in sent_videos[user_id]:
+        for chat_id, mid in sent_videos[user_id]:
             try:
-                bot.delete_message(user_id, mid)
-            except:
-                pass
+                bot.delete_message(chat_id, mid)
+            except Exception as e:
+                print("Delete failed:", e)
 
         sent_videos.pop(user_id, None)
 
