@@ -12,6 +12,7 @@ temp_access = {}
 sent_videos = {}
 current_folder = {}
 
+# ✅ Channel fixed folder
 channel_folder = "DEFAULT"
 
 
@@ -27,12 +28,8 @@ def start(msg):
     kb.add("📥 Download")
 
     inline = telebot.types.InlineKeyboardMarkup()
-    inline.add(
-        telebot.types.InlineKeyboardButton(f"💰 Buy ₹{price}", url=link)
-    )
-    inline.add(
-        telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid")
-    )
+    inline.add(telebot.types.InlineKeyboardButton(f"💰 Buy ₹{price}", url=link))
+    inline.add(telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid"))
 
     bot.send_message(msg.chat.id, f"{text}\n💰 Price: ₹{price}", reply_markup=kb)
     bot.send_message(msg.chat.id, "👇 Buy Premium", reply_markup=inline)
@@ -41,7 +38,11 @@ def start(msg):
 # ================= PAID BUTTON =================
 @bot.callback_query_handler(func=lambda call: call.data == "paid")
 def paid_handler(call):
-    bot.answer_callback_query(call.id)
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+
     bot.send_message(call.message.chat.id, "📸 Payment screenshot bhejo")
 
 
@@ -49,6 +50,7 @@ def paid_handler(call):
 @bot.channel_post_handler(content_types=['video'])
 def auto_save_channel(msg):
     add_video(channel_folder, msg.video.file_id)
+    print(f"Saved in folder: {channel_folder}")
 
 
 # ================= ADMIN PANEL =================
@@ -63,50 +65,197 @@ def admin(msg):
         "🛠 ADMIN PANEL\n\n"
 
         "⚙️ SETTINGS:\n"
-        "✏️ /setstart\n"
-        "💰 /setprice\n"
-        "🔗 /setbuy\n\n"
+        "✏️ /setstart TEXT\n"
+        "💰 /setprice PRICE\n"
+        "🔗 /setbuy URL\n\n"
 
         "💳 PAYMENTS:\n"
         "📥 /requests\n\n"
 
         "📂 VIDEO MANAGEMENT:\n"
-        "📂 /setfolder\n"
-        "📂 /setchannelfolder\n"
-        "👁 /viewfolder NAME\n"
+        "📂 /setfolder NAME\n"
+        "📂 /setchannelfolder NAME\n"
+        "📤 Send videos → auto add\n"
         "📁 /folders\n"
-        "🗑 /delfolder\n"
-        "❌ /delvideo\n"
+        "🗑 /delfolder NAME\n"
+        "❌ /delvideo INDEX\n\n"
     )
 
     bot.send_message(msg.chat.id, text)
 
 
-# ================= VIEW FOLDER (NEW) =================
-@bot.message_handler(commands=['viewfolder'])
-def view_folder(msg):
+# ================= SET CHANNEL FOLDER =================
+@bot.message_handler(commands=['setchannelfolder'])
+def set_channel_folder(msg):
+
+    global channel_folder
 
     if msg.from_user.id != ADMIN_ID:
         return
 
-    name = msg.text.replace("/viewfolder", "").strip()
+    name = msg.text.replace("/setchannelfolder", "").strip()
 
     if not name:
-        bot.reply_to(msg, "❌ Use /viewfolder NAME")
+        bot.reply_to(msg, "❌ Use /setchannelfolder NAME")
         return
 
-    vids = get_videos(name)
+    channel_folder = name
 
-    if not vids:
-        bot.send_message(msg.chat.id, "❌ No videos found")
+    bot.reply_to(msg, f"✅ Channel folder set: {name}")
+
+
+# ================= SETTINGS =================
+@bot.message_handler(commands=['setstart'])
+def setstart(msg):
+    if msg.from_user.id != ADMIN_ID:
+        return
+    set_config("start_text", msg.text.replace("/setstart ", ""))
+    bot.reply_to(msg, "✅ Updated")
+
+
+@bot.message_handler(commands=['setprice'])
+def setprice(msg):
+    if msg.from_user.id != ADMIN_ID:
+        return
+    set_config("price", msg.text.split(" ", 1)[1])
+    bot.reply_to(msg, "✅ Updated")
+
+
+@bot.message_handler(commands=['setbuy'])
+def setbuy(msg):
+    if msg.from_user.id != ADMIN_ID:
+        return
+    set_config("buy_link", msg.text.split(" ", 1)[1])
+    bot.reply_to(msg, "✅ Updated")
+
+
+# ================= PAYMENT =================
+@bot.message_handler(content_types=['photo'])
+def ss(msg):
+    add_pending(msg.from_user.id, msg.photo[-1].file_id)
+    bot.send_message(msg.chat.id, "⏳ Wait for approval")
+
+
+@bot.message_handler(commands=['requests'])
+def requests(msg):
+
+    if msg.from_user.id != ADMIN_ID:
         return
 
-    text = f"📂 {name}\nTotal Videos: {len(vids)}\n\n"
+    for d in get_pending():
 
-    for i, v in enumerate(vids):
-        text += f"{i} ➜ {v['file_id'][:30]}...\n"
+        uid = d["user_id"]
+
+        kb = telebot.types.InlineKeyboardMarkup()
+        kb.add(
+            telebot.types.InlineKeyboardButton("✅ Approve", callback_data=f"apv_{uid}"),
+            telebot.types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_{uid}")
+        )
+
+        bot.send_photo(msg.chat.id, d["file_id"], caption=f"User: {uid}", reply_markup=kb)
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("apv_"))
+def approve(call):
+    uid = int(call.data.split("_")[1])
+    add_premium(uid)
+    remove_pending(uid)
+    bot.send_message(uid, "🎉 Approved!\n📥 Click Download")
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("rej_"))
+def reject(call):
+    uid = int(call.data.split("_")[1])
+    remove_pending(uid)
+    bot.send_message(uid, "❌ Rejected")
+
+
+# ================= FOLDER =================
+@bot.message_handler(commands=['setfolder'])
+def setfolder(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    name = msg.text.replace("/setfolder", "").strip()
+
+    if not name:
+        bot.reply_to(msg, "❌ Use /setfolder NAME")
+        return
+
+    current_folder[msg.from_user.id] = name
+    bot.reply_to(msg, f"📂 Active folder: {name}")
+
+
+@bot.message_handler(commands=['folders'])
+def showfolders(msg):
+
+    data = get_folders()
+
+    text = "📂 Folders:\n\n"
+
+    for f in data:
+        count = len(get_videos(f))
+        text += f"👉 {f} ({count})\n"
 
     bot.send_message(msg.chat.id, text)
+
+
+# ================= SAVE VIDEO =================
+@bot.message_handler(content_types=['video'])
+def savevideo(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    if msg.from_user.id not in current_folder:
+        bot.reply_to(msg, "❌ Use /setfolder first")
+        return
+
+    folder = current_folder[msg.from_user.id]
+
+    add_video(folder, msg.video.file_id)
+
+    bot.reply_to(msg, f"✅ Saved in {folder}")
+
+
+# ================= DELETE =================
+@bot.message_handler(commands=['delfolder'])
+def delfolder(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    name = msg.text.replace("/delfolder", "").strip()
+
+    delete_folder(name)
+
+    bot.reply_to(msg, f"🗑 Deleted {name}")
+
+
+@bot.message_handler(commands=['delvideo'])
+def delvideo(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    parts = msg.text.split(" ")
+
+    if len(parts) < 2:
+        bot.reply_to(msg, "❌ /delvideo INDEX")
+        return
+
+    index = int(parts[1])
+
+    if msg.from_user.id not in current_folder:
+        bot.reply_to(msg, "❌ Set folder first")
+        return
+
+    folder = current_folder[msg.from_user.id]
+
+    delete_video(folder, index)
+
+    bot.reply_to(msg, "❌ Video deleted")
 
 
 # ================= DOWNLOAD =================
@@ -118,17 +267,25 @@ def download(msg):
         return
 
     user_id = msg.from_user.id
+
+    # ✅ access always allow (no expiry)
     temp_access[user_id] = True
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
 
-    for f in get_folders():
+    folders = get_folders()
+
+    if not folders:
+        bot.send_message(msg.chat.id, "❌ No folders")
+        return
+
+    for f in folders:
         kb.add(f"📂 {f}")
 
-    bot.send_message(msg.chat.id, "⏳ Select Folder", reply_markup=kb)
+    bot.send_message(msg.chat.id, "⏳ Videos ready (auto delete in 15 min)", reply_markup=kb)
 
 
-# ================= OPEN FOLDER =================
+# ================= OPEN =================
 @bot.message_handler(func=lambda m: m.text.startswith("📂 "))
 def open_folder(msg):
 
@@ -142,19 +299,24 @@ def open_folder(msg):
 
     vids = get_videos(folder)
 
+    if not vids:
+        bot.send_message(msg.chat.id, "❌ No videos")
+        return
+
     sent_videos[user_id] = []
 
     for v in vids:
         m = bot.send_video(msg.chat.id, v["file_id"], protect_content=True)
         sent_videos[user_id].append(m.message_id)
 
+    # ✅ start auto delete timer
     threading.Thread(target=auto_expire, args=(user_id,), daemon=True).start()
 
 
 # ================= AUTO DELETE ONLY =================
 def auto_expire(user_id):
 
-    time.sleep(900)
+    time.sleep(900)  # 15 min
 
     if user_id in sent_videos:
         for mid in sent_videos[user_id]:
