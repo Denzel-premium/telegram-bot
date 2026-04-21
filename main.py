@@ -12,7 +12,7 @@ temp_access = {}
 sent_videos = {}
 current_folder = {}
 
-# ✅ NEW: Channel fixed folder
+# ✅ Channel fixed folder
 channel_folder = "DEFAULT"
 
 
@@ -35,7 +35,7 @@ def start(msg):
     bot.send_message(msg.chat.id, "👇 Buy Premium", reply_markup=inline)
 
 
-# ================= PAID BUTTON FIX =================
+# ================= PAID BUTTON =================
 @bot.callback_query_handler(func=lambda call: call.data == "paid")
 def paid_handler(call):
     try:
@@ -79,9 +79,6 @@ def admin(msg):
         "📁 /folders\n"
         "🗑 /delfolder NAME\n"
         "❌ /delvideo INDEX\n\n"
-
-        "🤖 AUTO CHANNEL:\n"
-        "📌 Channel videos → selected folder\n\n"
     )
 
     bot.send_message(msg.chat.id, text)
@@ -271,9 +268,8 @@ def download(msg):
 
     user_id = msg.from_user.id
 
-    if user_id not in temp_access:
-        temp_access[user_id] = time.time() + 900
-        threading.Thread(target=auto_expire, args=(user_id,), daemon=True).start()
+    # ✅ access always allow (no expiry)
+    temp_access[user_id] = True
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
 
@@ -286,7 +282,7 @@ def download(msg):
     for f in folders:
         kb.add(f"📂 {f}")
 
-    bot.send_message(msg.chat.id, "⏳ 15 min access", reply_markup=kb)
+    bot.send_message(msg.chat.id, "⏳ Videos ready (auto delete in 15 min)", reply_markup=kb)
 
 
 # ================= OPEN =================
@@ -295,8 +291,8 @@ def open_folder(msg):
 
     user_id = msg.from_user.id
 
-    if user_id not in temp_access or time.time() > temp_access[user_id]:
-        bot.send_message(msg.chat.id, "❌ Access expired")
+    if user_id not in temp_access:
+        bot.send_message(msg.chat.id, "❌ Click Download first")
         return
 
     folder = msg.text.replace("📂 ", "").strip()
@@ -307,19 +303,20 @@ def open_folder(msg):
         bot.send_message(msg.chat.id, "❌ No videos")
         return
 
-    sent_videos.setdefault(user_id, [])
+    sent_videos[user_id] = []
 
     for v in vids:
         m = bot.send_video(msg.chat.id, v["file_id"], protect_content=True)
         sent_videos[user_id].append(m.message_id)
 
+    # ✅ start auto delete timer
+    threading.Thread(target=auto_expire, args=(user_id,), daemon=True).start()
 
-# ================= AUTO EXPIRE =================
+
+# ================= AUTO DELETE ONLY =================
 def auto_expire(user_id):
 
-    time.sleep(900)
-
-    temp_access.pop(user_id, None)
+    time.sleep(900)  # 15 min
 
     if user_id in sent_videos:
         for mid in sent_videos[user_id]:
@@ -327,6 +324,7 @@ def auto_expire(user_id):
                 bot.delete_message(user_id, mid)
             except:
                 pass
+
         sent_videos.pop(user_id, None)
 
 
