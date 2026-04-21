@@ -205,12 +205,20 @@ def download(msg):
         bot.send_message(msg.chat.id, "❌ Premium required")
         return
 
-    temp_access[user_id] = time.time() + 900
-    threading.Thread(target=auto_expire, args=(user_id,)).start()
+    # ✅ spam fix
+    if user_id not in temp_access:
+        temp_access[user_id] = time.time() + 900
+        threading.Thread(target=auto_expire, args=(user_id,), daemon=True).start()
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
 
-    for f in get_folders():
+    folders = get_folders()
+
+    if not folders:
+        bot.send_message(msg.chat.id, "❌ No folders available")
+        return
+
+    for f in folders:
         kb.add(f"📂 {f}")
 
     bot.send_message(msg.chat.id, "⏳ 15 min access", reply_markup=kb)
@@ -229,6 +237,11 @@ def open_folder(msg):
     folder = msg.text.replace("📂 ", "").strip()
 
     vids = get_videos(folder)
+
+    # ✅ empty folder fix
+    if not vids:
+        bot.send_message(msg.chat.id, "❌ No videos in this folder")
+        return
 
     sent_videos.setdefault(user_id, [])
 
