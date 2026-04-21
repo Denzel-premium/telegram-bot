@@ -7,10 +7,10 @@ from db import *
 
 bot = telebot.TeleBot(TOKEN)
 
-# ================= TEMP ACCESS =================
-temp_access = {}   # user_id -> expiry
-sent_videos = {}   # user_id -> message_ids
-
+# ================= STORAGE =================
+temp_access = {}
+sent_videos = {}
+current_folder = {}
 
 # ================= START =================
 @bot.message_handler(commands=['start'])
@@ -31,19 +31,6 @@ def start(msg):
     bot.send_message(msg.chat.id, "👇 Buy Premium", reply_markup=inline)
 
 
-# ================= PAID =================
-@bot.callback_query_handler(func=lambda c: c.data == "paid")
-def paid(call):
-    bot.send_message(call.message.chat.id, "📸 Payment screenshot bhejo")
-
-
-# ================= SCREENSHOT =================
-@bot.message_handler(content_types=['photo'])
-def ss(msg):
-    add_pending(msg.from_user.id, msg.photo[-1].file_id)
-    bot.send_message(msg.chat.id, "⏳ Screenshot received, wait for admin")
-
-
 # ================= ADMIN PANEL =================
 @bot.message_handler(commands=['admin'])
 def admin(msg):
@@ -54,15 +41,26 @@ def admin(msg):
 
     text = (
         "🛠 ADMIN PANEL\n\n"
-        "✏️ /setstart - Set welcome\n"
-        "💰 /setprice - Set price\n"
-        "🔗 /setbuy - Set payment link\n"
-        "📥 /requests - View payments\n"
-        "📂 /folders - View folders\n"
-        "➕ /addvideo - Add video (file_id)\n\n"
-        "📌 Steps:\n"
-        "1. Bot me video bhejo → file_id milega\n"
-        "2. /addvideo FOLDER FILE_ID"
+
+        "⚙️ SETTINGS:\n"
+        "✏️ /setstart TEXT\n"
+        "💰 /setprice PRICE\n"
+        "🔗 /setbuy URL\n\n"
+
+        "💳 PAYMENTS:\n"
+        "📥 /requests\n\n"
+
+        "📂 VIDEO MANAGEMENT:\n"
+        "📂 /setfolder NAME\n"
+        "📤 Send videos → auto add\n"
+        "📁 /folders\n"
+        "🗑 /delfolder NAME\n"
+        "❌ /delvideo INDEX\n\n"
+
+        "📌 HOW TO USE:\n"
+        "1. /setfolder IG\n"
+        "2. videos bhejo\n"
+        "3. auto save ho jayega"
     )
 
     bot.send_message(msg.chat.id, text)
@@ -89,12 +87,17 @@ def setprice(msg):
 def setbuy(msg):
     if msg.from_user.id != ADMIN_ID:
         return
-    url = msg.text.split(" ", 1)[1]
-    set_config("buy_link", url)
+    set_config("buy_link", msg.text.split(" ", 1)[1])
     bot.reply_to(msg, "✅ Updated")
 
 
-# ================= REQUESTS =================
+# ================= PAYMENT =================
+@bot.message_handler(content_types=['photo'])
+def ss(msg):
+    add_pending(msg.from_user.id, msg.photo[-1].file_id)
+    bot.send_message(msg.chat.id, "⏳ Wait for approval")
+
+
 @bot.message_handler(commands=['requests'])
 def requests(msg):
 
@@ -114,69 +117,160 @@ def requests(msg):
         bot.send_photo(msg.chat.id, d["file_id"], caption=f"User: {uid}", reply_markup=kb)
 
 
-# ================= APPROVE =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("apv_"))
 def approve(call):
-
     uid = int(call.data.split("_")[1])
-
     add_premium(uid)
     remove_pending(uid)
-
     bot.send_message(uid, "🎉 Approved!\n📥 Click Download")
 
 
-# ================= REJECT =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("rej_"))
 def reject(call):
-
     uid = int(call.data.split("_")[1])
     remove_pending(uid)
     bot.send_message(uid, "❌ Rejected")
 
 
-# ================= GET FILE ID =================
-@bot.message_handler(content_types=['video'])
-def get_file_id(msg):
+# ================= FOLDER =================
+@bot.message_handler(commands=['setfolder'])
+def setfolder(msg):
 
     if msg.from_user.id != ADMIN_ID:
         return
 
-    bot.reply_to(msg, f"📌 FILE ID:\n{msg.video.file_id}")
+    name = msg.text.replace("/setfolder", "").strip()
 
-
-# ================= ADD VIDEO =================
-@bot.message_handler(commands=['addvideo'])
-def addvideo(msg):
-
-    if msg.from_user.id != ADMIN_ID:
+    if not name:
+        bot.reply_to(msg, "❌ Use /setfolder NAME")
         return
 
-    parts = msg.text.split(" ")
-
-    if len(parts) < 3:
-        bot.reply_to(msg, "❌ Use:\n/addvideo FOLDER FILE_ID")
-        return
-
-    folder = parts[1]
-    file_id = parts[2]
-
-    add_video(folder, file_id)
-
-    bot.reply_to(msg, f"✅ Added to {folder}")
+    current_folder[msg.from_user.id] = name
+    bot.reply_to(msg, f"📂 Active folder: {name}")
 
 
-# ================= SHOW FOLDERS =================
 @bot.message_handler(commands=['folders'])
 def showfolders(msg):
 
     data = get_folders()
 
     text = "📂 Folders:\n\n"
+
     for f in data:
-        text += f"👉 {f}\n"
+        count = len(get_videos(f))
+        text += f"👉 {f} ({count})\n"
 
     bot.send_message(msg.chat.id, text)
+
+
+# ================= SAVE VIDEO =================
+@bot.message_handler(content_types=['video'])
+def savevideo(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    if msg.from_user.id not in current_folder:
+        bot.reply_to(msg, "❌ Use /setfolder first")
+        return
+
+    folder = current_folder[msg.from_user.id]
+
+    add_video(folder, msg.video.file_id)
+
+    bot.reply_to(msg, f"✅ Saved in {folder}")
+
+
+# ================= DELETE =================
+@bot.message_handler(commands=['delfolder'])
+def delfolder(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    name = msg.text.replace("/delfolder", "").strip()
+
+    delete_folder(name)
+
+    bot.reply_to(msg, f"🗑 Deleted {name}")
+
+
+@bot.message_handler(commands=['delvideo'])
+def delvideo(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    parts = msg.text.split(" ")
+
+    if len(parts) < 2:
+        bot.reply_to(msg, "❌ /delvideo INDEX")
+        return
+
+    index = int(parts[1])
+
+    if msg.from_user.id not in current_folder:
+        bot.reply_to(msg, "❌ Set folder first")
+        return
+
+    folder = current_folder[msg.from_user.id]
+
+    delete_video(folder, index)
+
+    bot.reply_to(msg, "❌ Video deleted")
+
+
+# ================= DOWNLOAD =================
+@bot.message_handler(func=lambda m: m.text == "📥 Download")
+def download(msg):
+
+    if not is_premium(msg.from_user.id):
+        bot.send_message(msg.chat.id, "❌ Premium required")
+        return
+
+    user_id = msg.from_user.id
+
+    if user_id not in temp_access:
+        temp_access[user_id] = time.time() + 900
+        threading.Thread(target=auto_expire, args=(user_id,), daemon=True).start()
+
+    kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+    folders = get_folders()
+
+    if not folders:
+        bot.send_message(msg.chat.id, "❌ No folders")
+        return
+
+    for f in folders:
+        kb.add(f"📂 {f}")
+
+    bot.send_message(msg.chat.id, "⏳ 15 min access", reply_markup=kb)
+
+
+# ================= OPEN =================
+@bot.message_handler(func=lambda m: m.text.startswith("📂 "))
+def open_folder(msg):
+
+    user_id = msg.from_user.id
+
+    if user_id not in temp_access or time.time() > temp_access[user_id]:
+        bot.send_message(msg.chat.id, "❌ Access expired")
+        return
+
+    folder = msg.text.replace("📂 ", "").strip()
+
+    vids = get_videos(folder)
+
+    if not vids:
+        bot.send_message(msg.chat.id, "❌ No videos")
+        return
+
+    sent_videos.setdefault(user_id, [])
+
+    for v in vids:
+        m = bot.send_video(msg.chat.id, v["file_id"], protect_content=True)
+        sent_videos[user_id].append(m.message_id)
 
 
 # ================= AUTO EXPIRE =================
@@ -195,69 +289,6 @@ def auto_expire(user_id):
         sent_videos.pop(user_id, None)
 
 
-# ================= DOWNLOAD =================
-@bot.message_handler(func=lambda m: m.text == "📥 Download")
-def download(msg):
-
-    user_id = msg.from_user.id
-
-    if not is_premium(user_id):
-        bot.send_message(msg.chat.id, "❌ Premium required")
-        return
-
-    # ✅ spam fix
-    if user_id not in temp_access:
-        temp_access[user_id] = time.time() + 900
-        threading.Thread(target=auto_expire, args=(user_id,), daemon=True).start()
-
-    kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-
-    folders = get_folders()
-
-    if not folders:
-        bot.send_message(msg.chat.id, "❌ No folders available")
-        return
-
-    for f in folders:
-        kb.add(f"📂 {f}")
-
-    bot.send_message(msg.chat.id, "⏳ 15 min access", reply_markup=kb)
-
-
-# ================= OPEN FOLDER =================
-@bot.message_handler(func=lambda m: m.text.startswith("📂 "))
-def open_folder(msg):
-
-    user_id = msg.from_user.id
-
-    if user_id not in temp_access or time.time() > temp_access[user_id]:
-        bot.send_message(msg.chat.id, "❌ Access expired\n👉 Click Download again")
-        return
-
-    folder = msg.text.replace("📂 ", "").strip()
-
-    vids = get_videos(folder)
-
-    # ✅ empty folder fix
-    if not vids:
-        bot.send_message(msg.chat.id, "❌ No videos in this folder")
-        return
-
-    sent_videos.setdefault(user_id, [])
-
-    for v in vids:
-        m = bot.send_video(
-            msg.chat.id,
-            v["file_id"],
-            protect_content=True
-        )
-        sent_videos[user_id].append(m.message_id)
-
-
 # ================= RUN =================
 print("Bot Running...")
-bot.infinity_polling(
-    skip_pending=True,
-    timeout=20,
-    long_polling_timeout=20
-)
+bot.infinity_polling(skip_pending=True)
