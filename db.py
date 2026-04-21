@@ -16,6 +16,9 @@ videos = db["videos"]
 config = db["config"]
 pending = db["pending"]
 
+# ✅ NEW EXPIRY COLLECTION
+exp = db["expiry"]
+
 
 # ================= CONFIG =================
 def set_config(key, value):
@@ -50,9 +53,7 @@ def remove_pending(user_id):
     pending.delete_many({"user_id": user_id})
 
 
-# ================= VIDEOS (PRO) =================
-
-# ✅ duplicate block
+# ================= VIDEOS =================
 def add_video(folder, file_id):
     if not videos.find_one({"file_id": file_id}):
         videos.insert_one({
@@ -60,31 +61,21 @@ def add_video(folder, file_id):
             "file_id": file_id
         })
 
-
-# ✅ folder list
 def get_folders():
     return videos.distinct("folder")
 
-
-# ✅ latest first
 def get_videos(folder):
     return list(videos.find({"folder": folder}).sort("_id", -1))
 
-
-# ✅ delete folder
 def delete_folder(name):
     videos.delete_many({"folder": name})
 
-
-# ✅ delete video safely
 def delete_video(folder, index):
     data = list(videos.find({"folder": folder}).sort("_id", -1))
-
     if 0 <= index < len(data):
         videos.delete_one({"_id": data[index]["_id"]})
 
 
-# ✅ rename folder
 def rename_folder(old_name, new_name):
     videos.update_many(
         {"folder": old_name},
@@ -92,11 +83,26 @@ def rename_folder(old_name, new_name):
     )
 
 
-# ✅ search (future use)
 def search_video(keyword):
     return list(videos.find({"file_id": {"$regex": keyword}}))
 
-
-# ✅ count videos
 def count_videos(folder):
     return videos.count_documents({"folder": folder})
+
+
+# ================= EXPIRY SYSTEM =================
+def set_expiry(user_id, message_ids, chat_id, expire_at):
+    exp.insert_one({
+        "user_id": user_id,
+        "message_ids": message_ids,
+        "chat_id": chat_id,
+        "expire_at": expire_at
+    })
+
+
+def get_expired(now):
+    return list(exp.find({"expire_at": {"$lte": now}}))
+
+
+def delete_expiry(user_id):
+    exp.delete_many({"user_id": user_id})
