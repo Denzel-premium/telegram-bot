@@ -1,5 +1,4 @@
 import telebot
-import random
 import threading
 import time
 
@@ -8,14 +7,9 @@ from db import *
 
 bot = telebot.TeleBot(TOKEN)
 
-# ================= FOLDER SYSTEM STORAGE =================
-folders = {}          # folder_name -> [video_file_ids]
-pending_folder = {}   # admin upload tracking
-upload_mode = {}      # admin_id -> folder (MULTI UPLOAD MODE)
-sent_videos = {}
-
-# ================= NEW: TEMP ACCESS SYSTEM =================
-temp_access = {}  # user_id -> expiry timestamp
+# ================= TEMP ACCESS =================
+temp_access = {}   # user_id -> expiry
+sent_videos = {}   # user_id -> message_ids
 
 
 # ================= START =================
@@ -27,100 +21,77 @@ def start(msg):
     link = get_config("buy_link") or "https://google.com"
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("📥 Download")   # ✅ Video List removed
+    kb.add("📥 Download")
 
     inline = telebot.types.InlineKeyboardMarkup()
-
-    inline.add(
-        telebot.types.InlineKeyboardButton(
-            f"💰 Buy ₹{price}",
-            url=link
-        )
-    )
-
-    inline.add(
-        telebot.types.InlineKeyboardButton(
-            "💳 I Have Paid",
-            callback_data="paid"
-        )
-    )
+    inline.add(telebot.types.InlineKeyboardButton(f"💰 Buy ₹{price}", url=link))
+    inline.add(telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid"))
 
     bot.send_message(msg.chat.id, f"{text}\n💰 Price: ₹{price}", reply_markup=kb)
     bot.send_message(msg.chat.id, "👇 Buy Premium", reply_markup=inline)
 
 
-# ================= PAID BUTTON =================
+# ================= PAID =================
 @bot.callback_query_handler(func=lambda c: c.data == "paid")
 def paid(call):
-    bot.send_message(call.message.chat.id,
-        "📸 Payment screenshot yaha bhejo"
-    )
+    bot.send_message(call.message.chat.id, "📸 Payment screenshot bhejo")
 
 
 # ================= SCREENSHOT =================
 @bot.message_handler(content_types=['photo'])
 def ss(msg):
-
     add_pending(msg.from_user.id, msg.photo[-1].file_id)
-
-    bot.send_message(msg.chat.id,
-        "⏳ Screenshot received, wait for admin approval"
-    )
+    bot.send_message(msg.chat.id, "⏳ Screenshot received, wait for admin")
 
 
 # ================= ADMIN PANEL =================
 @bot.message_handler(commands=['admin'])
 def admin(msg):
 
-    if int(msg.from_user.id) != int(ADMIN_ID):
+    if msg.from_user.id != ADMIN_ID:
         bot.send_message(msg.chat.id, "❌ Not allowed")
         return
 
     text = (
         "🛠 ADMIN PANEL\n\n"
-        "✏️ /setstart - Set welcome message\n"
-        "💰 /setprice - Set premium price\n"
-        "🔗 /setbuy - Set payment URL\n"
+        "✏️ /setstart - Set welcome\n"
+        "💰 /setprice - Set price\n"
+        "🔗 /setbuy - Set payment link\n"
         "📥 /requests - View payments\n"
-        "📁 /addfolder - Create Folder\n"
-        "📤 /upload - Upload Videos (multi mode)\n"
-        "🛑 /stopupload - Stop upload mode\n"
-        "📂 /folders - View Folders\n"
-        "▶️ /open - Open Folder Videos\n"
-        "🗑 /delfolder - Delete Folder\n"
+        "📂 /folders - View folders\n"
+        "➕ /addvideo - Add video (file_id)\n\n"
+        "📌 Steps:\n"
+        "1. Bot me video bhejo → file_id milega\n"
+        "2. /addvideo FOLDER FILE_ID"
     )
 
     bot.send_message(msg.chat.id, text)
 
 
-# ================= SET COMMANDS =================
+# ================= SETTINGS =================
 @bot.message_handler(commands=['setstart'])
 def setstart(msg):
     if msg.from_user.id != ADMIN_ID:
         return
-    set_config("start_text", msg.text.replace("/setstart ",""))
-    bot.reply_to(msg, "✅ Start updated")
+    set_config("start_text", msg.text.replace("/setstart ", ""))
+    bot.reply_to(msg, "✅ Updated")
 
 
 @bot.message_handler(commands=['setprice'])
 def setprice(msg):
     if msg.from_user.id != ADMIN_ID:
         return
-    set_config("price", msg.text.split(" ",1)[1])
-    bot.reply_to(msg, "✅ Price updated")
+    set_config("price", msg.text.split(" ", 1)[1])
+    bot.reply_to(msg, "✅ Updated")
 
 
 @bot.message_handler(commands=['setbuy'])
 def setbuy(msg):
-
     if msg.from_user.id != ADMIN_ID:
         return
-
-    url = msg.text.split(" ", 1)[1].strip()
-
+    url = msg.text.split(" ", 1)[1]
     set_config("buy_link", url)
-
-    bot.reply_to(msg, "✅ Buy URL updated")
+    bot.reply_to(msg, "✅ Updated")
 
 
 # ================= REQUESTS =================
@@ -130,12 +101,9 @@ def requests(msg):
     if msg.from_user.id != ADMIN_ID:
         return
 
-    data = get_pending()
-
-    for d in data:
+    for d in get_pending():
 
         uid = d["user_id"]
-        file_id = d["file_id"]
 
         kb = telebot.types.InlineKeyboardMarkup()
         kb.add(
@@ -143,10 +111,7 @@ def requests(msg):
             telebot.types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_{uid}")
         )
 
-        bot.send_photo(msg.chat.id, file_id,
-            caption=f"User: {uid}",
-            reply_markup=kb
-        )
+        bot.send_photo(msg.chat.id, d["file_id"], caption=f"User: {uid}", reply_markup=kb)
 
 
 # ================= APPROVE =================
@@ -158,9 +123,7 @@ def approve(call):
     add_premium(uid)
     remove_pending(uid)
 
-    bot.send_message(uid,
-        "🎉 Approved!\n🔥 Premium Activated Successfully\n📂 Now open Download"
-    )
+    bot.send_message(uid, "🎉 Approved!\n📥 Click Download")
 
 
 # ================= REJECT =================
@@ -168,33 +131,57 @@ def approve(call):
 def reject(call):
 
     uid = int(call.data.split("_")[1])
-
     remove_pending(uid)
     bot.send_message(uid, "❌ Rejected")
 
 
-# ================= UNLOCK =================
-@bot.message_handler(commands=['unlock'])
-def unlock(msg):
+# ================= GET FILE ID =================
+@bot.message_handler(content_types=['video'])
+def get_file_id(msg):
 
-    parts = msg.text.split(" ",1)
-
-    if len(parts) < 2:
-        bot.reply_to(msg, "❌ /unlock KEY")
+    if msg.from_user.id != ADMIN_ID:
         return
 
-    key = parts[1].strip()
-    real = get_key(msg.from_user.id)
+    bot.reply_to(msg, f"📌 FILE ID:\n{msg.video.file_id}")
 
-    if key == real:
-        add_premium(msg.from_user.id)
-        bot.reply_to(msg, "✅ Premium Activated!")
-    else:
-        bot.reply_to(msg, "❌ Invalid Key")
+
+# ================= ADD VIDEO =================
+@bot.message_handler(commands=['addvideo'])
+def addvideo(msg):
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    parts = msg.text.split(" ")
+
+    if len(parts) < 3:
+        bot.reply_to(msg, "❌ Use:\n/addvideo FOLDER FILE_ID")
+        return
+
+    folder = parts[1]
+    file_id = parts[2]
+
+    add_video(folder, file_id)
+
+    bot.reply_to(msg, f"✅ Added to {folder}")
+
+
+# ================= SHOW FOLDERS =================
+@bot.message_handler(commands=['folders'])
+def showfolders(msg):
+
+    data = get_folders()
+
+    text = "📂 Folders:\n\n"
+    for f in data:
+        text += f"👉 {f}\n"
+
+    bot.send_message(msg.chat.id, text)
 
 
 # ================= AUTO EXPIRE =================
 def auto_expire(user_id):
+
     time.sleep(900)
 
     temp_access.pop(user_id, None)
@@ -205,114 +192,12 @@ def auto_expire(user_id):
                 bot.delete_message(user_id, mid)
             except:
                 pass
-
         sent_videos.pop(user_id, None)
 
 
-# ================= FOLDER SYSTEM =================
-@bot.message_handler(commands=['addfolder'])
-def addfolder(msg):
-
-    if msg.from_user.id != ADMIN_ID:
-        return
-
-    name = msg.text.replace("/addfolder", "").strip()
-
-    if not name:
-        bot.reply_to(msg, "❌ Folder name required\nExample: /addfolder VIP")
-        return
-
-    folders[name] = []
-
-    bot.reply_to(msg, f"📁 Folder '{name}' created")
-
-
-@bot.message_handler(commands=['folders'])
-def showfolders(msg):
-
-    text = "📂 Folders:\n\n"
-    for f in folders:
-        text += f"👉 {f}\n"
-
-    bot.send_message(msg.chat.id, text)
-
-
-@bot.message_handler(commands=['open'])
-def openfolder(msg):
-
-    name = msg.text.replace("/open", "").strip()
-
-    sent_videos.setdefault(msg.from_user.id, [])
-
-    for v in folders.get(name, []):
-        m = bot.send_video(msg.chat.id, v)
-        sent_videos[msg.from_user.id].append(m.message_id)
-
-
-@bot.message_handler(commands=['delfolder'])
-def delfolder(msg):
-
-    if msg.from_user.id != ADMIN_ID:
-        return
-
-    name = msg.text.replace("/delfolder", "").strip()
-
-    if not name:
-        bot.reply_to(msg, "❌ Use /delfolder FOLDER_NAME")
-        return
-
-    if name in folders:
-        folders.pop(name)
-        bot.reply_to(msg, f"🗑 Folder '{name}' deleted")
-    else:
-        bot.reply_to(msg, "❌ Folder not found")
-
-
-# ================= MULTI UPLOAD =================
-@bot.message_handler(commands=['upload'])
-def upload(msg):
-
-    if msg.from_user.id != ADMIN_ID:
-        return
-
-    name = msg.text.replace("/upload", "").strip()
-    upload_mode[msg.from_user.id] = name
-
-    bot.reply_to(msg, "📤 Upload ON")
-
-
-@bot.message_handler(commands=['stopupload'])
-def stopupload(msg):
-
-    if msg.from_user.id != ADMIN_ID:
-        return
-
-    upload_mode.pop(msg.from_user.id, None)
-
-    bot.reply_to(msg, "🛑 Upload OFF")
-
-
-@bot.message_handler(content_types=['video'])
-def savevideo(msg):
-
-    if msg.from_user.id != ADMIN_ID:
-        return
-
-    uid = msg.from_user.id
-
-    if uid not in upload_mode:
-        return
-
-    folder = upload_mode[uid]
-
-    folders.setdefault(folder, []).append(msg.video.file_id)
-
-    bot.send_message(msg.chat.id, f"✅ Added to {folder}")
-
-
-# ================= 📥 DOWNLOAD =================
+# ================= DOWNLOAD =================
 @bot.message_handler(func=lambda m: m.text == "📥 Download")
-def download_menu(msg):
+def download(msg):
 
     user_id = msg.from_user.id
 
@@ -320,26 +205,20 @@ def download_menu(msg):
         bot.send_message(msg.chat.id, "❌ Premium required")
         return
 
-    # ✅ 15 min access + auto expire
     temp_access[user_id] = time.time() + 900
     threading.Thread(target=auto_expire, args=(user_id,)).start()
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
 
-    text = "📥 Select Folder:\n\n"
-    for f in folders:
-        text += f"👉 {f}\n"
+    for f in get_folders():
         kb.add(f"📂 {f}")
 
-    bot.send_message(msg.chat.id,
-        "⏳ 15 min access granted\n\n" + text,
-        reply_markup=kb
-    )
+    bot.send_message(msg.chat.id, "⏳ 15 min access", reply_markup=kb)
 
 
-# ================= 📂 OPEN WITH ACCESS CHECK =================
+# ================= OPEN FOLDER =================
 @bot.message_handler(func=lambda m: m.text.startswith("📂 "))
-def open_from_menu(msg):
+def open_folder(msg):
 
     user_id = msg.from_user.id
 
@@ -347,19 +226,21 @@ def open_from_menu(msg):
         bot.send_message(msg.chat.id, "❌ Access expired\n👉 Click Download again")
         return
 
-    name = msg.text.replace("📂 ", "").strip()
+    folder = msg.text.replace("📂 ", "").strip()
+
+    vids = get_videos(folder)
 
     sent_videos.setdefault(user_id, [])
 
-    for v in folders[name]:
-        m = bot.send_video(msg.chat.id, v)
+    for v in vids:
+        m = bot.send_video(
+            msg.chat.id,
+            v["file_id"],
+            protect_content=True
+        )
         sent_videos[user_id].append(m.message_id)
 
 
 # ================= RUN =================
 print("Bot Running...")
-bot.infinity_polling(
-    skip_pending=True,
-    timeout=20,
-    long_polling_timeout=20
-)
+bot.infinity_polling(skip_pending=True)
