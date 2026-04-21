@@ -12,6 +12,10 @@ temp_access = {}
 sent_videos = {}
 current_folder = {}
 
+# ✅ NEW: Channel fixed folder
+channel_folder = "DEFAULT"
+
+
 # ================= START =================
 @bot.message_handler(commands=['start'])
 def start(msg):
@@ -31,19 +35,22 @@ def start(msg):
     bot.send_message(msg.chat.id, "👇 Buy Premium", reply_markup=inline)
 
 
-# ================= ✅ PAID BUTTON FIX =================
+# ================= PAID BUTTON FIX =================
 @bot.callback_query_handler(func=lambda call: call.data == "paid")
 def paid_handler(call):
-
     try:
         bot.answer_callback_query(call.id)
     except:
         pass
 
-    bot.send_message(
-        call.message.chat.id,
-        "📸 Payment screenshot bhejo"
-    )
+    bot.send_message(call.message.chat.id, "📸 Payment screenshot bhejo")
+
+
+# ================= CHANNEL AUTO SAVE =================
+@bot.channel_post_handler(content_types=['video'])
+def auto_save_channel(msg):
+    add_video(channel_folder, msg.video.file_id)
+    print(f"Saved in folder: {channel_folder}")
 
 
 # ================= ADMIN PANEL =================
@@ -67,18 +74,37 @@ def admin(msg):
 
         "📂 VIDEO MANAGEMENT:\n"
         "📂 /setfolder NAME\n"
+        "📂 /setchannelfolder NAME\n"
         "📤 Send videos → auto add\n"
         "📁 /folders\n"
         "🗑 /delfolder NAME\n"
         "❌ /delvideo INDEX\n\n"
 
-        "📌 HOW TO USE:\n"
-        "1. /setfolder IG\n"
-        "2. videos bhejo\n"
-        "3. auto save ho jayega"
+        "🤖 AUTO CHANNEL:\n"
+        "📌 Channel videos → selected folder\n\n"
     )
 
     bot.send_message(msg.chat.id, text)
+
+
+# ================= SET CHANNEL FOLDER =================
+@bot.message_handler(commands=['setchannelfolder'])
+def set_channel_folder(msg):
+
+    global channel_folder
+
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    name = msg.text.replace("/setchannelfolder", "").strip()
+
+    if not name:
+        bot.reply_to(msg, "❌ Use /setchannelfolder NAME")
+        return
+
+    channel_folder = name
+
+    bot.reply_to(msg, f"✅ Channel folder set: {name}")
 
 
 # ================= SETTINGS =================
