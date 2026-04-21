@@ -1,6 +1,6 @@
 from pymongo import MongoClient
 
-client = MongoClient("YOUR_MONGO_URL")
+client = MongoClient("MONGO_URL")
 db = client["bot_db"]
 
 users = db["users"]
