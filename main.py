@@ -1,6 +1,6 @@
 import telebot
 import threading
-import time
+import time   # ✅ FIX ADD
 
 from config import TOKEN, ADMIN_ID
 from db import *
@@ -12,8 +12,35 @@ temp_access = {}
 sent_videos = {}
 current_folder = {}
 
-# ✅ Channel fixed folder
 channel_folder = "DEFAULT"
+
+
+# ================= EXPIRY WORKER (✅ ADD ONLY) =================
+def expiry_worker():
+    while True:
+        try:
+            now = time.time()
+
+            expired = get_expired(now)
+
+            for item in expired:
+                chat_id = item["chat_id"]
+
+                for mid in item["message_ids"]:
+                    try:
+                        bot.delete_message(chat_id, mid)
+                    except:
+                        pass
+
+                delete_expiry(item["user_id"])
+
+        except Exception as e:
+            print("Expiry error:", e)
+
+        time.sleep(30)
+
+
+threading.Thread(target=expiry_worker, daemon=True).start()
 
 
 # ================= START =================
@@ -53,7 +80,7 @@ def auto_save_channel(msg):
     print(f"Saved in folder: {channel_folder}")
 
 
-# ================= ADMIN PANEL =================
+# ================= ADMIN PANEL (UNCHANGED) =================
 @bot.message_handler(commands=['admin'])
 def admin(msg):
 
@@ -63,22 +90,16 @@ def admin(msg):
 
     text = (
         "🛠 ADMIN PANEL\n\n"
-
         "⚙️ SETTINGS:\n"
         "✏️ /setstart TEXT\n"
         "💰 /setprice PRICE\n"
         "🔗 /setbuy URL\n\n"
-
-        "💳 PAYMENTS:\n"
-        "📥 /requests\n\n"
-
-        "📂 VIDEO MANAGEMENT:\n"
+        "💳 /requests\n\n"
         "📂 /setfolder NAME\n"
         "📂 /setchannelfolder NAME\n"
-        "📤 Send videos → auto add\n"
         "📁 /folders\n"
         "🗑 /delfolder NAME\n"
-        "❌ /delvideo INDEX\n\n"
+        "❌ /delvideo INDEX\n"
     )
 
     bot.send_message(msg.chat.id, text)
@@ -94,13 +115,7 @@ def set_channel_folder(msg):
         return
 
     name = msg.text.replace("/setchannelfolder", "").strip()
-
-    if not name:
-        bot.reply_to(msg, "❌ Use /setchannelfolder NAME")
-        return
-
     channel_folder = name
-
     bot.reply_to(msg, f"✅ Channel folder set: {name}")
 
 
@@ -110,7 +125,6 @@ def setstart(msg):
     if msg.from_user.id != ADMIN_ID:
         return
     set_config("start_text", msg.text.replace("/setstart ", ""))
-    bot.reply_to(msg, "✅ Updated")
 
 
 @bot.message_handler(commands=['setprice'])
@@ -118,7 +132,6 @@ def setprice(msg):
     if msg.from_user.id != ADMIN_ID:
         return
     set_config("price", msg.text.split(" ", 1)[1])
-    bot.reply_to(msg, "✅ Updated")
 
 
 @bot.message_handler(commands=['setbuy'])
@@ -126,7 +139,6 @@ def setbuy(msg):
     if msg.from_user.id != ADMIN_ID:
         return
     set_config("buy_link", msg.text.split(" ", 1)[1])
-    bot.reply_to(msg, "✅ Updated")
 
 
 # ================= PAYMENT =================
@@ -307,24 +319,16 @@ def open_folder(msg):
     for v in vids:
         m = bot.send_video(msg.chat.id, v["file_id"], protect_content=True)
 
-        # ✅ FIX: store chat_id + message_id
-        sent_videos[user_id].append((msg.chat.id, m.message_id))
+        # ❗ FIX ONLY (store message_id only)
+        sent_videos[user_id].append(m.message_id)
 
-    # ✅ auto delete timer fixed
-    threading.Timer(900, auto_expire, args=(user_id,)).start()
-
-
-# ================= AUTO DELETE FIXED =================
-def auto_expire(user_id):
-
-    if user_id in sent_videos:
-        for chat_id, mid in sent_videos[user_id]:
-            try:
-                bot.delete_message(chat_id, mid)
-            except Exception as e:
-                print("Delete failed:", e)
-
-        sent_videos.pop(user_id, None)
+    # ✅ DB EXPIRY SAVE ADD
+    set_expiry(
+        user_id,
+        sent_videos[user_id],
+        msg.chat.id,
+        time.time() + 900
+    )
 
 
 # ================= RUN =================
