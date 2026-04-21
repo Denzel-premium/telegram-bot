@@ -42,7 +42,7 @@ def paid_handler(call):
 
     bot.send_message(
         call.message.chat.id,
-        "📸 Payment screenshot bhejo\n\n⚠️ Clear screenshot bhejna"
+        "📸 Payment screenshot bhejo"
     )
 
 
