@@ -31,6 +31,21 @@ def start(msg):
     bot.send_message(msg.chat.id, "👇 Buy Premium", reply_markup=inline)
 
 
+# ================= ✅ PAID BUTTON FIX =================
+@bot.callback_query_handler(func=lambda call: call.data == "paid")
+def paid_handler(call):
+
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+
+    bot.send_message(
+        call.message.chat.id,
+        "📸 Payment screenshot bhejo\n\n⚠️ Clear screenshot bhejna"
+    )
+
+
 # ================= ADMIN PANEL =================
 @bot.message_handler(commands=['admin'])
 def admin(msg):
