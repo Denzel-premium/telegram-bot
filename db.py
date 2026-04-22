@@ -16,7 +16,7 @@ videos = db["videos"]
 config = db["config"]
 pending = db["pending"]
 
-# ✅ NEW EXPIRY COLLECTION
+# ✅ EXPIRY COLLECTION
 exp = db["expiry"]
 
 
@@ -94,7 +94,7 @@ def count_videos(folder):
 def set_expiry(user_id, message_ids, chat_id, expire_at):
     exp.insert_one({
         "user_id": user_id,
-        "message_ids": message_ids,
+        "message_ids": list(message_ids),  # ✅ SAFE COPY FIX
         "chat_id": chat_id,
         "expire_at": expire_at
     })
@@ -104,5 +104,6 @@ def get_expired(now):
     return list(exp.find({"expire_at": {"$lte": now}}))
 
 
-def delete_expiry(user_id):
-    exp.delete_many({"user_id": user_id})
+# ❗ MAIN FIX HERE
+def delete_expiry(_id):
+    exp.delete_one({"_id": _id})
