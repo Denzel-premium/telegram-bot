@@ -74,19 +74,10 @@ def paid_handler(call):
 
 
 # ================= CHANNEL AUTO SAVE =================
-@bot.channel_post_handler(func=lambda m: True)
+@bot.channel_post_handler(content_types=['video'])
 def auto_save_channel(msg):
-
-    print("Channel Update:", msg.content_type)
-
-    if msg.content_type == "video":
-        add_video(channel_folder, msg.video.file_id)
-        print(f"Video Saved in folder: {channel_folder}")
-
-    elif msg.content_type == "document":
-        if msg.document.mime_type and msg.document.mime_type.startswith("video"):
-            add_video(channel_folder, msg.document.file_id)
-            print(f"Document Video Saved in folder: {channel_folder}")
+    add_video(channel_folder, msg.video.file_id)
+    print(f"Saved in folder: {channel_folder}")
 
 
 # ================= ADMIN PANEL (UNCHANGED) =================
