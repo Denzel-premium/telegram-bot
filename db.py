@@ -4,7 +4,7 @@ from pymongo import MongoClient
 try:
     from config import MONGO_URL
 except ImportError:
-    MONGO_URL = os.getenv("MONGO_URL") or os.getenv("MONGO_URI")
+    MONGO_URL = os.getenv("MONGO_URL") or os.getenv("MONGO_URL")
 
 client = MongoClient(MONGO_URL)
 
