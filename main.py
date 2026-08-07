@@ -60,7 +60,7 @@ def build_main_menu():
     inline.add(
         telebot.types.InlineKeyboardButton(f"💰 Buy Premium ₹{price}", callback_data="generate_qr"),
         telebot.types.InlineKeyboardButton("👁️ Demo", callback_data="show_demo"),
-        telebot.types.InlineKeyboardButton("📸 Upload Screenshot", callback_data="paid_main"),
+        telebot.types.InlineKeyboardButton("📸 I have paid", callback_data="paid_main"),
         telebot.types.InlineKeyboardButton("📂 Folder Passes", callback_data="folder_pass_menu"),
     )
     return text, inline
@@ -146,7 +146,7 @@ def generate_qr_handler(call):
 
     inline = telebot.types.InlineKeyboardMarkup(row_width=1)
     inline.add(
-        telebot.types.InlineKeyboardButton("📸 I have paid ", callback_data="paid_main"),
+        telebot.types.InlineKeyboardButton("📸 Upload Screenshot", callback_data="paid_main"),
         telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
     )
 
