@@ -146,7 +146,7 @@ def generate_qr_handler(call):
 
     inline = telebot.types.InlineKeyboardMarkup(row_width=1)
     inline.add(
-        telebot.types.InlineKeyboardButton("📸 Upload Screenshot", callback_data="paid_main"),
+        telebot.types.InlineKeyboardButton("📸 I have paid ", callback_data="paid_main"),
         telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
     )
 
