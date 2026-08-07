@@ -51,6 +51,21 @@ def has_folder_access(user_id, folder_name):
     )
 
 
+# ================= MAIN MENU BUILDER =================
+def build_main_menu():
+    text = get_config("start_text") or "👋 Welcome to Premium Bot"
+    price = get_config("price") or "29"
+
+    inline = telebot.types.InlineKeyboardMarkup(row_width=1)
+    inline.add(
+        telebot.types.InlineKeyboardButton(f"💰 Buy Premium ₹{price}", callback_data="generate_qr"),
+        telebot.types.InlineKeyboardButton("👁️ Demo", callback_data="show_demo"),
+        telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid_main"),
+        telebot.types.InlineKeyboardButton("📂 Folder Passes", callback_data="folder_pass_menu"),
+    )
+    return text, inline
+
+
 # ================= EXPIRY WORKER (AUTO DELETE) =================
 def expiry_worker():
     while True:
@@ -77,40 +92,49 @@ def expiry_worker():
 threading.Thread(target=expiry_worker, daemon=True).start()
 
 
-# ================= START =================
+# ================= START COMMAND =================
 @bot.message_handler(commands=['start'])
 def start(msg):
     track_user(msg.from_user.id)
 
-    text = get_config("start_text") or "👋 Welcome to Premium Bot"
-    price = get_config("price") or "29"
+    text, inline = build_main_menu()
     start_image = get_config("start_image")
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("📥 Download")
 
-    inline = telebot.types.InlineKeyboardMarkup(row_width=1)
-    inline.add(
-        telebot.types.InlineKeyboardButton(f"💰 Buy Premium ₹{price}", callback_data="generate_qr"),
-        telebot.types.InlineKeyboardButton("👁️ Demo", callback_data="show_demo"),
-        telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid_main"),
-        telebot.types.InlineKeyboardButton("📂 Folder Passes", callback_data="folder_pass_menu"),
-    )
-
-    caption_full = f"{text}\n\n💰 Price: ₹{price}"
-
     if start_image:
         try:
-            bot.send_photo(msg.chat.id, photo=start_image, caption=caption_full, reply_markup=kb)
+            bot.send_photo(msg.chat.id, photo=start_image, caption=text, reply_markup=kb)
         except Exception:
-            bot.send_message(msg.chat.id, caption_full, reply_markup=kb)
+            bot.send_message(msg.chat.id, text, reply_markup=kb)
     else:
-        bot.send_message(msg.chat.id, caption_full, reply_markup=kb)
+        bot.send_message(msg.chat.id, text, reply_markup=kb)
 
     bot.send_message(msg.chat.id, "👇 Select Option Below:", reply_markup=inline)
 
 
-# ================= SIMPLE & COMPACT QR CODE =================
+# ================= NAVIGATION: GO BACK TO HOME =================
+@bot.callback_query_handler(func=lambda call: call.data == "go_home")
+def go_home_handler(call):
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
+
+    text, inline = build_main_menu()
+
+    try:
+        bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=inline)
+    except Exception:
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except Exception:
+            pass
+        bot.send_message(call.message.chat.id, text, reply_markup=inline)
+
+
+# ================= BUY PREMIUM (IN-PLACE QR) =================
 @bot.callback_query_handler(func=lambda call: call.data == "generate_qr")
 def generate_qr_handler(call):
     try:
@@ -122,8 +146,11 @@ def generate_qr_handler(call):
     upi_id = get_config("upi_id") or "example@upi"
     upi_url = f"upi://pay?pa={upi_id}&pn=Premium&am={price}&cu=INR"
 
-    inline = telebot.types.InlineKeyboardMarkup()
-    inline.add(telebot.types.InlineKeyboardButton("💳 Upload Screenshot", callback_data="paid_main"))
+    inline = telebot.types.InlineKeyboardMarkup(row_width=1)
+    inline.add(
+        telebot.types.InlineKeyboardButton("💳 Upload Screenshot", callback_data="paid_main"),
+        telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
+    )
 
     caption_text = (
         f"👑 VIP ACCESS PASS 👑\n\n"
@@ -136,13 +163,16 @@ def generate_qr_handler(call):
     qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&bgcolor=ffffff&color=000000&data={urllib.parse.quote(upi_url)}"
 
     try:
+        bot.edit_message_text(caption_text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=inline)
+    except Exception:
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except Exception:
+            pass
         bot.send_photo(call.message.chat.id, photo=qr_api, caption=caption_text, reply_markup=inline)
-    except Exception as e:
-        print("QR Error:", e)
-        bot.send_message(call.message.chat.id, f"{caption_text}\n\n📌 UPI: {upi_id}", reply_markup=inline)
 
 
-# ================= DEMO HANDLER =================
+# ================= DEMO HANDLER (IN-PLACE EDIT) =================
 @bot.callback_query_handler(func=lambda call: call.data == "show_demo")
 def show_demo_handler(call):
     try:
@@ -158,29 +188,42 @@ def show_demo_handler(call):
     demo_text = get_config("demo_text") or "👁️ Here is Demo Content!"
 
     if not demo_file and not demo_text:
-        bot.send_message(chat_id, "❌ Demo content available nahi hai.")
+        bot.answer_callback_query(call.id, "❌ Demo content available nahi hai.", show_alert=True)
         return
 
-    buy_kb = telebot.types.InlineKeyboardMarkup()
-    buy_kb.add(telebot.types.InlineKeyboardButton("💎 Buy Premium", callback_data="generate_qr"))
+    buy_kb = telebot.types.InlineKeyboardMarkup(row_width=1)
+    buy_kb.add(
+        telebot.types.InlineKeyboardButton("💎 Buy Premium", callback_data="generate_qr"),
+        telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
+    )
 
     sent_demo_ids = []
     demo_caption = f"{demo_text}\n\n⚠️ Yeh demo 10 minute me delete ho jayega!"
 
-    if demo_type == "video" and demo_file:
-        m1 = bot.send_video(chat_id, video=demo_file, caption=demo_caption, reply_markup=buy_kb, protect_content=True)
-        sent_demo_ids.append(m1.message_id)
-    elif demo_type == "photo" and demo_file:
-        m1 = bot.send_photo(chat_id, photo=demo_file, caption=demo_caption, reply_markup=buy_kb)
+    if demo_type in ["video", "photo"] and demo_file:
+        try:
+            bot.delete_message(chat_id, call.message.message_id)
+        except Exception:
+            pass
+
+        if demo_type == "video":
+            m1 = bot.send_video(chat_id, video=demo_file, caption=demo_caption, reply_markup=buy_kb, protect_content=True)
+        else:
+            m1 = bot.send_photo(chat_id, photo=demo_file, caption=demo_caption, reply_markup=buy_kb)
+
         sent_demo_ids.append(m1.message_id)
     else:
-        m1 = bot.send_message(chat_id, demo_caption, reply_markup=buy_kb)
-        sent_demo_ids.append(m1.message_id)
+        try:
+            bot.edit_message_text(demo_caption, chat_id=chat_id, message_id=call.message.message_id, reply_markup=buy_kb)
+        except Exception:
+            m1 = bot.send_message(chat_id, demo_caption, reply_markup=buy_kb)
+            sent_demo_ids.append(m1.message_id)
 
-    set_expiry(user_id, sent_demo_ids, chat_id, time.time() + 600)
+    if sent_demo_ids:
+        set_expiry(user_id, sent_demo_ids, chat_id, time.time() + 600)
 
 
-# ================= DIRECT SCREENSHOT OPTION =================
+# ================= DIRECT SCREENSHOT OPTION (IN-PLACE EDIT) =================
 @bot.callback_query_handler(func=lambda call: call.data == "paid_main")
 def paid_main_handler(call):
     try:
@@ -189,10 +232,19 @@ def paid_main_handler(call):
         pass
 
     user_pending_folder[call.from_user.id] = "ONLINE_VIP_PLAN"
-    bot.send_message(call.message.chat.id, "📸 Payment hone ke baad yahan Screenshot bhejo")
+
+    inline = telebot.types.InlineKeyboardMarkup()
+    inline.add(telebot.types.InlineKeyboardButton("🔙 Back to Main Menu", callback_data="go_home"))
+
+    text = "📸 Payment hone ke baad yahan chat me Screenshot bhejo."
+
+    try:
+        bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=inline)
+    except Exception:
+        bot.send_message(call.message.chat.id, text, reply_markup=inline)
 
 
-# ================= FOLDER PASSES MENU (IN-PLACE EDIT FIX) =================
+# ================= FOLDER PASSES MENU (IN-PLACE EDIT) =================
 @bot.callback_query_handler(func=lambda call: call.data == "folder_pass_menu")
 def folder_pass_menu(call):
     user_id = call.from_user.id
@@ -204,11 +256,13 @@ def folder_pass_menu(call):
     default_text = "📁 PER-FOLDER ACCESS PASS\n\nNiche se apna Folder Select karke Pass Buy karein:"
     pass_instruction = get_config("pass_text") or default_text
 
-    inline = telebot.types.InlineKeyboardMarkup()
+    inline = telebot.types.InlineKeyboardMarkup(row_width=1)
     for f in folders:
         f_price = get_config(f"folder_price_{f}") or "49"
         status_text = " ✅" if has_folder_access(user_id, f) else f" • ₹{f_price}"
         inline.add(telebot.types.InlineKeyboardButton(f"📂 {f}{status_text}", callback_data=f"view_folder_{f}"))
+
+    inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
 
     try:
         bot.edit_message_text(pass_instruction, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=inline)
@@ -216,7 +270,7 @@ def folder_pass_menu(call):
         bot.send_message(call.message.chat.id, pass_instruction, reply_markup=inline)
 
 
-# ================= VIEW FOLDER DETAILS (IN-PLACE EDIT FIX) =================
+# ================= VIEW FOLDER DETAILS (IN-PLACE EDIT) =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("view_folder_"))
 def view_folder_cb(call):
     user_id = call.from_user.id
@@ -224,16 +278,17 @@ def view_folder_cb(call):
     f_price = get_config(f"folder_price_{folder}") or "49"
     vids_count = len(get_videos(folder))
 
-    inline = telebot.types.InlineKeyboardMarkup()
+    inline = telebot.types.InlineKeyboardMarkup(row_width=1)
 
     if has_folder_access(user_id, folder):
         inline.add(telebot.types.InlineKeyboardButton(f"🔄 Re-fetch {folder}", callback_data=f"refetch_pass_{folder}"))
-        inline.add(telebot.types.InlineKeyboardButton("🔙 Back to Folders", callback_data="folder_pass_menu"))
         status_info = "✅ Aapke paas is folder ka Approved Pass hai!"
     else:
         inline.add(telebot.types.InlineKeyboardButton("💎 Buy Pass", callback_data=f"buy_folder_{folder}"))
-        inline.add(telebot.types.InlineKeyboardButton("🔙 Back to Folders", callback_data="folder_pass_menu"))
         status_info = f"💰 Pass Price: ₹{f_price}"
+
+    inline.add(telebot.types.InlineKeyboardButton("🔙 Back to Folders", callback_data="folder_pass_menu"))
+    inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
 
     text = f"📂 FOLDER: {folder}\n🎬 Total Videos: {vids_count}\n\n{status_info}"
 
@@ -243,7 +298,7 @@ def view_folder_cb(call):
         bot.send_message(call.message.chat.id, text, reply_markup=inline)
 
 
-# ================= GENERATE QR FOR SPECIFIC FOLDER =================
+# ================= GENERATE QR FOR FOLDER PASS (IN-PLACE EDIT) =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("buy_folder_"))
 def buy_folder_cb(call):
     user_id = call.from_user.id
@@ -252,22 +307,23 @@ def buy_folder_cb(call):
     upi_id = get_config("upi_id") or "example@upi"
 
     user_pending_folder[user_id] = folder
-    upi_url = f"upi://pay?pa={upi_id}&pn=Premium&am={f_price}&cu=INR"
 
-    inline = telebot.types.InlineKeyboardMarkup()
-    inline.add(telebot.types.InlineKeyboardButton("📸 Send Screenshot", callback_data=f"paid_folder_{folder}"))
+    inline = telebot.types.InlineKeyboardMarkup(row_width=1)
+    inline.add(
+        telebot.types.InlineKeyboardButton("📸 Send Screenshot", callback_data=f"paid_folder_{folder}"),
+        telebot.types.InlineKeyboardButton("🔙 Back to Folders", callback_data="folder_pass_menu"),
+        telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
+    )
 
     caption_text = (
         f"📂 FOLDER PASS: {folder}\n"
         f"💰 Amount: ₹{f_price}\n"
         f"📌 UPI ID: {upi_id}\n\n"
-        f"👇 Pay karke Screenshot bhejein!"
+        f"👇 Pay karke 'Send Screenshot' par click karein!"
     )
 
-    qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&bgcolor=ffffff&color=000000&data={urllib.parse.quote(upi_url)}"
-
     try:
-        bot.send_photo(call.message.chat.id, photo=qr_api, caption=caption_text, reply_markup=inline)
+        bot.edit_message_text(caption_text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=inline)
     except Exception:
         bot.send_message(call.message.chat.id, caption_text, reply_markup=inline)
 
@@ -276,7 +332,16 @@ def buy_folder_cb(call):
 def paid_folder_prompt(call):
     folder = call.data.replace("paid_folder_", "").strip()
     user_pending_folder[call.from_user.id] = folder
-    bot.send_message(call.message.chat.id, f"📸 Payment ka Screenshot bhejein (Folder: {folder}):")
+
+    inline = telebot.types.InlineKeyboardMarkup()
+    inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
+
+    text = f"📸 Payment ka Screenshot yahan chat me bhejein (Folder: {folder}):"
+
+    try:
+        bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=inline)
+    except Exception:
+        bot.send_message(call.message.chat.id, text, reply_markup=inline)
 
 
 # ================= RE-FETCH PASS HANDLER (FOLDER PASS = 15 MINS TIMER) =================
@@ -299,11 +364,13 @@ def refetch_pass_cb(call):
         m = bot.send_video(call.message.chat.id, v["file_id"], protect_content=False, caption="⚠️ Auto-delete in 15 minutes!")
         sent_ids.append(m.message_id)
 
-    # ⏱️ FOLDER PASS TIMER = 15 MINUTES (900 seconds)
     set_expiry(user_id, sent_ids, call.message.chat.id, time.time() + 900)
 
-    inline = telebot.types.InlineKeyboardMarkup()
-    inline.add(telebot.types.InlineKeyboardButton("🔄 Re-fetch Videos", callback_data=f"refetch_pass_{folder}"))
+    inline = telebot.types.InlineKeyboardMarkup(row_width=1)
+    inline.add(
+        telebot.types.InlineKeyboardButton("🔄 Re-fetch Videos", callback_data=f"refetch_pass_{folder}"),
+        telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
+    )
     bot.send_message(call.message.chat.id, f"⏳ 15 Minutes Timer Started for {folder}!", reply_markup=inline)
 
 
@@ -567,7 +634,10 @@ def approve(call):
             set_expiry(uid, sent_ids, uid, time.time() + 900)
 
             inline = telebot.types.InlineKeyboardMarkup()
-            inline.add(telebot.types.InlineKeyboardButton("🔄 Re-fetch Videos", callback_data=f"refetch_pass_{ptype}"))
+            inline.add(
+                telebot.types.InlineKeyboardButton("🔄 Re-fetch Videos", callback_data=f"refetch_pass_{ptype}"),
+                telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
+            )
             bot.send_message(uid, f"⏳ 15 Minutes Timer Started for {ptype}!", reply_markup=inline)
 
     bot.send_message(call.message.chat.id, f"✅ Approved user {uid} for {ptype}!")
@@ -638,7 +708,7 @@ def delvideo(msg):
     bot.reply_to(msg, "❌ Video deleted")
 
 
-# ================= DOWNLOAD (MAIN DOWNLOAD PLAN = 25 MINS TIMER) =================
+# ================= DOWNLOAD (MAIN DOWNLOAD = 25 MINS TIMER) =================
 @bot.message_handler(func=lambda m: m.text == "📥 Download")
 def download(msg):
     track_user(msg.from_user.id)
