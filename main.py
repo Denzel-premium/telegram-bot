@@ -39,7 +39,7 @@ def track_user(user_id):
 
 def grant_folder_access(user_id, folder_name):
     uid = str(user_id)
-    fname = str(folder_name).strip().upper()
+    fname = str(folder_name).strip()
     if uid not in user_folder_access:
         user_folder_access[uid] = []
     if fname not in user_folder_access[uid]:
@@ -48,7 +48,7 @@ def grant_folder_access(user_id, folder_name):
 
 def has_folder_access(user_id, folder_name):
     uid = str(user_id)
-    fname = str(folder_name).strip().upper()
+    fname = str(folder_name).strip()
     if is_premium(user_id):
         return True
     return (
@@ -775,7 +775,6 @@ def open_folder(msg):
 
     folder = msg.text.replace("📂 ", "").strip()
 
-    # Check if user has permission (VIP plan or specific Folder Pass)
     if not has_folder_access(user_id, folder) and user_id not in temp_access:
         bot.send_message(msg.chat.id, "❌ Premium or Folder Pass required to open this folder.")
         return
