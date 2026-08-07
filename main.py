@@ -39,17 +39,21 @@ def track_user(user_id):
 
 def grant_folder_access(user_id, folder_name):
     uid = str(user_id)
+    fname = str(folder_name).strip().upper()
     if uid not in user_folder_access:
         user_folder_access[uid] = []
-    if folder_name not in user_folder_access[uid]:
-        user_folder_access[uid].append(folder_name)
+    if fname not in user_folder_access[uid]:
+        user_folder_access[uid].append(fname)
 
 
 def has_folder_access(user_id, folder_name):
     uid = str(user_id)
+    fname = str(folder_name).strip().upper()
+    if is_premium(user_id):
+        return True
     return (
         uid in user_folder_access
-        and folder_name in user_folder_access[uid]
+        and fname in user_folder_access[uid]
     )
 
 
@@ -602,7 +606,7 @@ def handle_media(msg):
         bot.send_message(msg.chat.id, f"⏳ Payment Screenshot Received for '{pending_folder}'! Wait for approval.")
 
 
-# ================= REQUESTS APPROVAL (FIXED EMPTY BUG) =================
+# ================= REQUESTS APPROVAL =================
 @bot.message_handler(commands=['requests'])
 def requests_cmd(msg):
     if not is_admin(msg.from_user.id):
@@ -641,7 +645,7 @@ def approve(call):
 
     remove_pending(uid)
 
-    # VIP ONLINE PLAN APPROVAL (NO EMPTY FOLDER BUG NOW)
+    # VIP ONLINE PLAN APPROVAL
     if ptype == "ONLINE_VIP_PLAN":
         add_premium(uid)
         bot.send_message(uid, "🎉 **VIP Online Plan Approved!**\n\n📥 Click **'Download'** button below to access all folders.", parse_mode="Markdown")
@@ -769,11 +773,13 @@ def open_folder(msg):
     user_id = msg.from_user.id
     track_user(user_id)
 
-    if user_id not in temp_access and not is_premium(user_id):
-        bot.send_message(msg.chat.id, "❌ Click Download first")
+    folder = msg.text.replace("📂 ", "").strip()
+
+    # Check if user has permission (VIP plan or specific Folder Pass)
+    if not has_folder_access(user_id, folder) and user_id not in temp_access:
+        bot.send_message(msg.chat.id, "❌ Premium or Folder Pass required to open this folder.")
         return
 
-    folder = msg.text.replace("📂 ", "").strip()
     vids = get_videos(folder) or []
 
     if not vids:
