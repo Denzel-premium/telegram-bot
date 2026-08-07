@@ -307,7 +307,7 @@ def auto_save_channel(msg):
     print(f"Saved in folder: {channel_folder}")
 
 
-# ================= ADMIN PANEL (PARSE MODE REMOVED = NO CRASH) =================
+# ================= ADMIN PANEL =================
 @bot.message_handler(commands=['admin'])
 def admin(msg):
     if not is_admin(msg.from_user.id):
@@ -419,28 +419,45 @@ def setimage_cmd(msg):
         bot.reply_to(msg, "📸 Abhi start banner image bhejo:")
 
 
+# ================= BROADCAST & STATS (FIXED CRASH) =================
 @bot.message_handler(commands=['broadcast'])
 def broadcast_msg(msg):
     if is_admin(msg.from_user.id):
         text = msg.text.replace("/broadcast", "").strip()
-        if text:
-            db_users = get_all_users() or []
-            users = list(set(list(db_users) + list(all_user_ids)))
-            for uid in users:
-                try:
-                    bot.send_message(uid, text)
-                    time.sleep(0.05)
-                except Exception:
-                    pass
-            bot.reply_to(msg, "✅ Broadcast Sent!")
+        if not text:
+            bot.reply_to(msg, "❌ Text bhi likhein: /broadcast Aapka Message")
+            return
+
+        db_users = get_all_users() or []
+        users = list(set(list(db_users) + list(all_user_ids)))
+
+        sent = 0
+        for uid in users:
+            try:
+                bot.send_message(uid, text)
+                sent += 1
+                time.sleep(0.04)
+            except Exception:
+                pass
+        bot.reply_to(msg, f"✅ Broadcast Sent to {sent} users!")
 
 
 @bot.message_handler(commands=['stats'])
 def stats(msg):
     if is_admin(msg.from_user.id):
-        db_users = get_all_users() or []
-        users_count = len(set(list(db_users) + list(all_user_ids)))
-        bot.send_message(msg.chat.id, f"📊 BOT STATS\n\n👥 Total Users: {users_count}\n📂 Folders: {len(get_folders())}")
+        try:
+            db_users = get_all_users() or []
+            users_count = len(set(list(db_users) + list(all_user_ids)))
+            folders_count = len(get_folders() or [])
+
+            stats_text = (
+                "📊 BOT STATS\n\n"
+                f"👥 Total Users: {users_count}\n"
+                f"📂 Total Folders: {folders_count}"
+            )
+            bot.send_message(msg.chat.id, stats_text)
+        except Exception as e:
+            bot.send_message(msg.chat.id, f"⚠️ Stats Error: {e}")
 
 
 # ================= MEDIA HANDLER =================
