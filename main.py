@@ -51,7 +51,7 @@ def build_main_menu():
     return text, inline
 
 
-# ================= EXPIRY WORKER (AUTO DELETE) =================
+# ================= EXPIRY WORKER =================
 def expiry_worker():
     while True:
         try:
@@ -61,7 +61,7 @@ def expiry_worker():
             if expired:
                 for item in expired:
                     chat_id = item["chat_id"]
-                    for mid in item["message_ids"]:
+                    for mid in item.get("message_ids", []):
                         try:
                             bot.delete_message(chat_id, mid)
                         except Exception:
@@ -99,7 +99,7 @@ def start(msg):
     bot.send_message(msg.chat.id, "👇 Select Option Below:", reply_markup=inline, parse_mode="Markdown")
 
 
-# ================= NAVIGATION: GO BACK TO HOME =================
+# ================= NAVIGATION =================
 @bot.callback_query_handler(func=lambda call: call.data == "go_home")
 def go_home_handler(call):
     try:
@@ -155,12 +155,11 @@ def generate_qr_handler(call):
 
     try:
         bot.send_photo(call.message.chat.id, photo=qr_api, caption=caption_text, reply_markup=inline, parse_mode="Markdown")
-    except Exception as e:
-        print("QR Error:", e)
+    except Exception:
         bot.send_message(call.message.chat.id, caption_text, reply_markup=inline, parse_mode="Markdown")
 
 
-# ================= DEMO HANDLER =================
+# ================= DEMO =================
 @bot.callback_query_handler(func=lambda call: call.data == "show_demo")
 def show_demo_handler(call):
     try:
@@ -207,7 +206,7 @@ def show_demo_handler(call):
         set_expiry(user_id, sent_demo_ids, chat_id, time.time() + 600)
 
 
-# ================= UPLOAD SCREENSHOT PROMPT =================
+# ================= UPLOAD PROMPT =================
 @bot.callback_query_handler(func=lambda call: call.data == "paid_main")
 def paid_main_handler(call):
     try:
@@ -234,7 +233,7 @@ def paid_main_handler(call):
     bot.send_message(call.message.chat.id, text, reply_markup=inline, parse_mode="Markdown")
 
 
-# ================= FOLDER PASSES MENU (STRICT LOCK PER FOLDER) =================
+# ================= FOLDER PASSES MENU =================
 @bot.callback_query_handler(func=lambda call: call.data == "folder_pass_menu")
 def folder_pass_menu(call):
     user_id = call.from_user.id
@@ -252,7 +251,6 @@ def folder_pass_menu(call):
         vids = get_videos(f) or []
         v_count = len(vids)
         
-        # Checking ONLY specific folder access or full VIP access
         is_unlocked = is_premium(user_id) or has_folder_access_db(user_id, f)
 
         if is_unlocked:
@@ -318,7 +316,7 @@ def view_folder_cb(call):
         bot.send_message(call.message.chat.id, text, reply_markup=inline, parse_mode="Markdown")
 
 
-# ================= BUY SPECIFIC FOLDER PASS =================
+# ================= BUY SPECIFIC PASS =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("buy_folder_"))
 def buy_folder_cb(call):
     user_id = call.from_user.id
@@ -326,7 +324,6 @@ def buy_folder_cb(call):
     f_price = get_config(f"folder_price_{folder}") or "49"
     upi_id = get_config("upi_id") or "example@upi"
 
-    # Set exact folder name in pending state
     user_pending_folder[user_id] = folder
     upi_url = f"upi://pay?pa={upi_id}&pn=Premium&am={f_price}&cu=INR"
 
@@ -379,7 +376,7 @@ def paid_folder_prompt(call):
     bot.send_message(call.message.chat.id, text, reply_markup=inline, parse_mode="Markdown")
 
 
-# ================= RE-FETCH / SEND PASS HANDLER =================
+# ================= SEND VIDEOS =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("refetch_pass_"))
 def refetch_pass_cb(call):
     user_id = call.from_user.id
@@ -613,7 +610,7 @@ def handle_media(msg):
         bot.send_message(msg.chat.id, f"⏳ Payment Screenshot Received for '{pending_folder}'! Wait for admin approval.")
 
 
-# ================= REQUESTS APPROVAL (STRICT SPECIFIC APPROVAL) =================
+# ================= REQUESTS APPROVAL =================
 @bot.message_handler(commands=['requests'])
 def requests_cmd(msg):
     if not is_admin(msg.from_user.id):
@@ -658,7 +655,6 @@ def approve(call):
 
     inline = telebot.types.InlineKeyboardMarkup()
 
-    # 1. VIP Plan (All Folders)
     if ptype == "ONLINE_VIP_PLAN":
         add_premium(uid)
         user_msg = (
@@ -666,14 +662,12 @@ def approve(call):
             "📥 Click **'Download'** button below to access all available folders."
         )
         inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
-
-    # 2. Single Specific Folder Access ONLY
     else:
         grant_folder_access_db(uid, ptype)
         user_msg = (
             f"🎉 **CONGRATULATIONS! FOLDER PASS APPROVED!** 🎉\n\n"
             f"📂 **Unlocked Folder:** `{ptype}`\n\n"
-            f"👉 Go to **Folder Passes** menu or click below to view & receive videos now!"
+            f"👉 Go to **Single Folder Passes** menu or click below to view & receive videos now!"
         )
         inline.add(telebot.types.InlineKeyboardButton(f"📂 Open Folder {ptype}", callback_data=f"view_folder_{ptype}"))
         inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
@@ -757,12 +751,11 @@ def delvideo(msg):
     bot.reply_to(msg, "❌ Video deleted")
 
 
-# ================= DOWNLOAD BUTTON HANDLER =================
+# ================= DOWNLOAD BUTTON =================
 @bot.message_handler(func=lambda m: m.text == "📥 Download")
 def download(msg):
     track_user(msg.from_user.id)
     
-    # Needs VIP plan or any unlocked folder pass
     user_id = msg.from_user.id
     temp_access[user_id] = True
 
@@ -779,7 +772,7 @@ def download(msg):
     bot.send_message(msg.chat.id, "⏳ Select folder to download:", reply_markup=kb)
 
 
-# ================= OPEN FOLDER (SEND VIDEOS) =================
+# ================= OPEN FOLDER =================
 @bot.message_handler(func=lambda m: m.text.startswith("📂 "))
 def open_folder(msg):
     user_id = msg.from_user.id
@@ -787,7 +780,6 @@ def open_folder(msg):
 
     folder = msg.text.replace("📂 ", "").strip()
 
-    # Checking folder permission
     is_unlocked = is_admin(user_id) or is_premium(user_id) or has_folder_access_db(user_id, folder)
 
     if not is_unlocked:
