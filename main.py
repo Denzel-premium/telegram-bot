@@ -46,40 +46,40 @@ def has_folder_access(user_id, folder_name):
     )
 
 
-# ================= ROYAL STANDEE GENERATOR (NO-CRASH FOR RAILWAY) =================
+# ================= ROYAL STANDEE GENERATOR (RAILWAY SAFE & COMPACT) =================
 def create_custom_qr_standee(upi_url, price_text):
-    width, height = 400, 550
+    width, height = 450, 700
     img = Image.new("RGB", (width, height), color="#FFFFFF")
     draw = ImageDraw.Draw(img)
 
-    # 1. Outer Golden Frame
-    draw.rectangle([12, 12, width - 12, height - 12], outline="#D4AF37", width=5)
-    draw.rectangle([18, 18, width - 18, height - 18], outline="#F3E5AB", width=2)
+    # 1. Outer Frame
+    draw.rectangle([15, 15, width - 15, height - 15], outline="#D4AF37", width=4)
+    draw.rectangle([22, 22, width - 22, height - 22], outline="#F3E5AB", width=2)
 
-    # 2. Crown & Header Text
-    draw.text((width // 2, 45), "👑", fill="#D4AF37", anchor="mm")
-    draw.text((width // 2, 85), "DENZEL PREMIUM", fill="#000000", anchor="mm")
-    draw.text((width // 2, 120), f"Pay Rs.{price_text} Here", fill="#D4AF37", anchor="mm")
+    # 2. Header Branding
+    draw.text((width // 2, 55), "👑", fill="#D4AF37", anchor="mm")
+    draw.text((width // 2, 100), "DENZEL PREMIUM", fill="#000000", anchor="mm")
+    draw.text((width // 2, 140), f"Pay Rs.{price_text} Here", fill="#D4AF37", anchor="mm")
 
-    # 3. QR Code Fetch
+    # 3. Compact QR Code Fetch
     qr_api = (
         f"https://api.qrserver.com/v1/create-qr-code/?"
-        f"size=220x220&margin=10&bgcolor=ffffff&color=000000&"
+        f"size=200x200&margin=12&bgcolor=ffffff&color=000000&"
         f"data={urllib.parse.quote(upi_url)}"
     )
     res = requests.get(qr_api, timeout=10)
     qr_img = Image.open(io.BytesIO(res.content))
 
-    qr_x, qr_y = (width - 220) // 2, 155
+    qr_x, qr_y = (width - 200) // 2, 190
     img.paste(qr_img, (qr_x, qr_y))
 
-    # Golden QR Frame
-    draw.rectangle([qr_x - 4, qr_y - 4, qr_x + 220 + 4, qr_y + 220 + 4], outline="#D4AF37", width=3)
+    draw.rectangle([qr_x - 6, qr_y - 6, qr_x + 200 + 6, qr_y + 200 + 6], outline="#D4AF37", width=3)
 
-    # 4. Footer & Golden Stand Base
-    draw.text((width // 2, 420), "Scan & Pay for VIP Access", fill="#333333", anchor="mm")
-    draw.rectangle([40, 465, width - 40, 480], fill="#D4AF37")
-    draw.rectangle([60, 480, width - 60, 488], fill="#AA7C11")
+    # 4. Footer & Stand Base
+    draw.text((width // 2, 440), "Scan & Pay for VIP Access", fill="#333333", anchor="mm")
+    draw.rectangle([50, 490, width - 50, 508], fill="#D4AF37")
+    draw.rectangle([75, 508, width - 75, 518], fill="#AA7C11")
+    draw.text((width // 2, 570), "✨ Thank You For Choosing Us ✨", fill="#888888", anchor="mm")
 
     bio = io.BytesIO()
     img.save(bio, format="PNG")
@@ -183,7 +183,6 @@ def generate_qr_handler(call):
         )
     except Exception as e:
         print("QR Error:", e)
-        # Backup if network fails
         qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={urllib.parse.quote(upi_url)}"
         bot.send_photo(call.message.chat.id, photo=qr_api, caption=caption_text, reply_markup=inline, parse_mode="Markdown")
 
@@ -391,10 +390,14 @@ def auto_save_channel(msg):
     print(f"Saved in folder: {channel_folder}")
 
 
-# ================= ADMIN PANEL =================
+# ================= ADMIN PANEL (FIXED DATA-TYPE COMPARISON) =================
 @bot.message_handler(commands=["admin"])
 def admin(msg):
-    if msg.from_user.id != ADMIN_ID:
+    # User ID aur ADMIN_ID dono ko strict string banakar strip karte hain taaki extra space ya quotes se issue na aaye
+    user_id_str = str(msg.from_user.id).strip()
+    admin_id_str = str(ADMIN_ID).strip()
+
+    if user_id_str != admin_id_str:
         bot.send_message(msg.chat.id, "❌ **Not allowed**", parse_mode="Markdown")
         return
 
@@ -423,8 +426,11 @@ def admin(msg):
 # ================= SET FOLDER PRICE & PASS TEXT =================
 @bot.message_handler(commands=["setfolderprice"])
 def setfolderprice(msg):
-    if msg.from_user.id != ADMIN_ID:
+    user_id_str = str(msg.from_user.id).strip()
+    admin_id_str = str(ADMIN_ID).strip()
+    if user_id_str != admin_id_str:
         return
+
     parts = msg.text.split(" ", 2)
     if len(parts) < 3:
         bot.reply_to(msg, "❌ **Usage:** `/setfolderprice FOLDER_NAME PRICE`", parse_mode="Markdown")
@@ -437,8 +443,11 @@ def setfolderprice(msg):
 
 @bot.message_handler(commands=["setpasstext"])
 def setpasstext(msg):
-    if msg.from_user.id != ADMIN_ID:
+    user_id_str = str(msg.from_user.id).strip()
+    admin_id_str = str(ADMIN_ID).strip()
+    if user_id_str != admin_id_str:
         return
+
     new_text = msg.text.replace("/setpasstext", "").strip()
     if not new_text:
         bot.reply_to(msg, "❌ **Usage:** `/setpasstext YOUR_CUSTOM_TEXT`", parse_mode="Markdown")
@@ -453,8 +462,10 @@ def setpasstext(msg):
 def handle_media(msg):
     track_user(msg.from_user.id)
     user_id = msg.from_user.id
+    user_id_str = str(user_id).strip()
+    admin_id_str = str(ADMIN_ID).strip()
 
-    if user_id == ADMIN_ID and admin_states.get(ADMIN_ID) == "awaiting_demo_content":
+    if user_id_str == admin_id_str and admin_states.get(ADMIN_ID) == "awaiting_demo_content":
         if msg.content_type == "video":
             set_config("demo_file_id", msg.video.file_id)
             set_config("demo_type", "video")
@@ -468,13 +479,13 @@ def handle_media(msg):
         bot.reply_to(msg, "✅ **Demo updated successfully!**", parse_mode="Markdown")
         return
 
-    if user_id == ADMIN_ID and admin_states.get(ADMIN_ID) == "awaiting_start_image" and msg.content_type == "photo":
+    if user_id_str == admin_id_str and admin_states.get(ADMIN_ID) == "awaiting_start_image" and msg.content_type == "photo":
         set_config("start_image", msg.photo[-1].file_id)
         admin_states[ADMIN_ID] = None
         bot.reply_to(msg, "✅ **Start Banner Photo updated!**", parse_mode="Markdown")
         return
 
-    if user_id == ADMIN_ID and msg.content_type == "video":
+    if user_id_str == admin_id_str and msg.content_type == "video":
         if user_id not in current_folder:
             bot.reply_to(msg, "❌ **Use /setfolder first**", parse_mode="Markdown")
             return
@@ -498,7 +509,9 @@ def handle_media(msg):
 # ================= REQUESTS APPROVAL =================
 @bot.message_handler(commands=["requests"])
 def requests(msg):
-    if msg.from_user.id != ADMIN_ID:
+    user_id_str = str(msg.from_user.id).strip()
+    admin_id_str = str(ADMIN_ID).strip()
+    if user_id_str != admin_id_str:
         return
 
     for d in get_pending():
@@ -564,21 +577,27 @@ def reject(call):
 # ================= OTHER ADMIN COMMANDS =================
 @bot.message_handler(commands=["setdemo"])
 def setdemo_cmd(msg):
-    if msg.from_user.id == ADMIN_ID:
+    user_id_str = str(msg.from_user.id).strip()
+    admin_id_str = str(ADMIN_ID).strip()
+    if user_id_str == admin_id_str:
         admin_states[msg.from_user.id] = "awaiting_demo_content"
         bot.reply_to(msg, "🎬 **Abhi Demo Video/Photo text ke saath bhejo:**", parse_mode="Markdown")
 
 
 @bot.message_handler(commands=["setimage"])
 def setimage_cmd(msg):
-    if msg.from_user.id == ADMIN_ID:
+    user_id_str = str(msg.from_user.id).strip()
+    admin_id_str = str(ADMIN_ID).strip()
+    if user_id_str == admin_id_str:
         admin_states[msg.from_user.id] = "awaiting_start_image"
         bot.reply_to(msg, "📸 **Abhi start banner image bhejo:**", parse_mode="Markdown")
 
 
 @bot.message_handler(commands=["setupi"])
 def setupi(msg):
-    if msg.from_user.id == ADMIN_ID:
+    user_id_str = str(msg.from_user.id).strip()
+    admin_id_str = str(ADMIN_ID).strip()
+    if user_id_str == admin_id_str:
         parts = msg.text.split(" ", 1)
         if len(parts) >= 2:
             set_config("upi_id", parts[1].strip())
@@ -587,7 +606,9 @@ def setupi(msg):
 
 @bot.message_handler(commands=["broadcast"])
 def broadcast_msg(msg):
-    if msg.from_user.id == ADMIN_ID:
+    user_id_str = str(msg.from_user.id).strip()
+    admin_id_str = str(ADMIN_ID).strip()
+    if user_id_str == admin_id_str:
         text = msg.text.replace("/broadcast", "").strip()
         if text:
             db_users = get_all_users() or []
@@ -603,7 +624,9 @@ def broadcast_msg(msg):
 
 @bot.message_handler(commands=["stats"])
 def stats(msg):
-    if msg.from_user.id == ADMIN_ID:
+    user_id_str = str(msg.from_user.id).strip()
+    admin_id_str = str(ADMIN_ID).strip()
+    if user_id_str == admin_id_str:
         db_users = get_all_users() or []
         users_count = len(set(list(db_users) + list(all_user_ids)))
         bot.send_message(msg.chat.id, f"📊 **BOT STATS**\n\n👥 **Total Users:** {users_count}\n📂 **Folders:** {len(get_folders())}", parse_mode="Markdown")
@@ -611,7 +634,9 @@ def stats(msg):
 
 @bot.message_handler(commands=["setfolder"])
 def setfolder(msg):
-    if msg.from_user.id == ADMIN_ID:
+    user_id_str = str(msg.from_user.id).strip()
+    admin_id_str = str(ADMIN_ID).strip()
+    if user_id_str == admin_id_str:
         name = msg.text.replace("/setfolder", "").strip()
         current_folder[msg.from_user.id] = name
         bot.reply_to(msg, f"📂 **Active folder: {name}**", parse_mode="Markdown")
@@ -630,7 +655,9 @@ def showfolders(msg):
 
 @bot.message_handler(commands=["delfolder"])
 def delfolder(msg):
-    if msg.from_user.id == ADMIN_ID:
+    user_id_str = str(msg.from_user.id).strip()
+    admin_id_str = str(ADMIN_ID).strip()
+    if user_id_str == admin_id_str:
         name = msg.text.replace("/delfolder", "").strip()
         delete_folder(name)
         bot.reply_to(msg, f"🗑 **Deleted folder: {name}**", parse_mode="Markdown")
@@ -638,7 +665,9 @@ def delfolder(msg):
 
 @bot.message_handler(commands=["delvideo"])
 def delvideo(msg):
-    if msg.from_user.id == ADMIN_ID:
+    user_id_str = str(msg.from_user.id).strip()
+    admin_id_str = str(ADMIN_ID).strip()
+    if user_id_str == admin_id_str:
         parts = msg.text.split(" ")
         if len(parts) >= 2:
             index = int(parts[1])
