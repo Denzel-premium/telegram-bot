@@ -1,10 +1,14 @@
+import io
 import random
 import threading
 import time
 import urllib.parse
+from PIL import Image, ImageDraw
+import requests
+import telebot
+
 from config import ADMIN_ID, TOKEN
 from db import *
-import telebot
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -25,7 +29,7 @@ def track_user(user_id):
     all_user_ids.add(user_id)
     try:
         add_user(user_id)
-    except:
+    except Exception:
         pass
 
 
@@ -43,6 +47,78 @@ def has_folder_access(user_id, folder_name):
     )
 
 
+# ================= STANDEE QR IMAGE GENERATOR =================
+def create_custom_qr_standee(upi_url, price_text):
+    """Generates a Premium Denzel Acrylic Standee Poster with Golden Crown & Frame"""
+    width, height = 400, 550
+    img = Image.new("RGB", (width, height), color="#FFFFFF")
+    draw = ImageDraw.Draw(img)
+
+    # 1. Outer Golden Border Frame (Standee Edge)
+    draw.rectangle(
+        [10, 10, width - 10, height - 10], outline="#D4AF37", width=4
+    )
+
+    # 2. Header Branding
+    # King Crown Icon (Emoji) & Text
+    draw.text((width // 2, 45), "👑", fill="#D4AF37", anchor="mm", font_size=40)
+    draw.text(
+        (width // 2, 95),
+        "DENZEL PREMIUM",
+        fill="#000000",
+        anchor="mm",
+        font_size=26,
+    )
+
+    # Golden Price Tagline
+    draw.text(
+        (width // 2, 135),
+        f"₹ Pay {price_text} Here",
+        fill="#D4AF37",
+        anchor="mm",
+        font_size=20,
+    )
+
+    # 3. Fetch Compact QR Code Image from API (Clean High Contrast)
+    qr_api = (
+        f"https://api.qrserver.com/v1/create-qr-code/?"
+        f"size=220x220&margin=10&bgcolor=ffffff&color=000000&"
+        f"data={urllib.parse.quote(upi_url)}"
+    )
+    response = requests.get(qr_api)
+    qr_img = Image.open(io.BytesIO(response.content))
+
+    # Paste QR in Center
+    qr_x = (width - 220) // 2
+    qr_y = 175
+    img.paste(qr_img, (qr_x, qr_y))
+
+    # Golden Inner Border around QR Code
+    draw.rectangle(
+        [qr_x - 5, qr_y - 5, qr_x + 220 + 5, qr_y + 220 + 5],
+        outline="#D4AF37",
+        width=3,
+    )
+
+    # 4. Footer Message
+    draw.text(
+        (width // 2, 435),
+        "✨ Scan, Pay & Enjoy VIP Access ✨",
+        fill="#333333",
+        anchor="mm",
+        font_size=15,
+    )
+
+    # Bottom Golden Stand Base Line
+    draw.rectangle([30, 480, width - 30, 495], fill="#D4AF37")
+
+    # Save to memory buffer
+    bio = io.BytesIO()
+    img.save(bio, format="PNG")
+    bio.seek(0)
+    return bio
+
+
 # ================= EXPIRY WORKER (15 MIN AUTO-DELETE) =================
 def expiry_worker():
     while True:
@@ -55,7 +131,7 @@ def expiry_worker():
                 for mid in item["message_ids"]:
                     try:
                         bot.delete_message(chat_id, mid)
-                    except:
+                    except Exception:
                         pass
                 delete_expiry(item["_id"])
 
@@ -85,10 +161,10 @@ def start(msg):
     inline = telebot.types.InlineKeyboardMarkup(row_width=1)
     inline.add(
         telebot.types.InlineKeyboardButton(
-            f"💎 Buy Premium", callback_data="generate_qr"
+            "💎 Buy Premium", callback_data="generate_qr"
         ),
         telebot.types.InlineKeyboardButton(
-            "👀 Demo", callback_data="show_demo"
+            "👁️ Demo", callback_data="show_demo"
         ),
         telebot.types.InlineKeyboardButton(
             "💳 I Have Paid", callback_data="paid_main"
@@ -113,7 +189,7 @@ def start(msg):
                 reply_markup=kb,
                 parse_mode="Markdown",
             )
-        except:
+        except Exception:
             bot.send_message(
                 msg.chat.id,
                 caption_full,
@@ -133,34 +209,21 @@ def start(msg):
     )
 
 
-# ================= BUY PREMIUM (29 VIP PLAN) =================
+# ================= BUY PREMIUM (VIP PLAN STANDEE QR) =================
 @bot.callback_query_handler(func=lambda call: call.data == "generate_qr")
 def generate_qr_handler(call):
     try:
         bot.answer_callback_query(call.id)
-    except:
+    except Exception:
         pass
 
     price = get_config("price") or "29"
     upi_id = get_config("upi_id") or "example@upi"
 
-    upi_url = f"upi://pay?pa={upi_id}&pn=PremiumBot&am={price}&cu=INR"
+    upi_url = f"upi://pay?pa={upi_id}&pn=DenzelPremium&am={price}&cu=INR"
 
-    qr_themes = [
-        {"color": "00f2fe", "bgcolor": "0f2027"},
-        {"color": "ff007f", "bgcolor": "1a1c23"},
-        {"color": "00ff88", "bgcolor": "111827"},
-        {"color": "a855f7", "bgcolor": "1e1b4b"},
-    ]
-    chosen_theme = random.choice(qr_themes)
-
-    qr_code_api = (
-        f"https://api.qrserver.com/v1/create-qr-code/?"
-        f"size=350x350&"
-        f"bgcolor={chosen_theme['bgcolor']}&"
-        f"color={chosen_theme['color']}&"
-        f"data={urllib.parse.quote(upi_url)}"
-    )
+    # Generate Denzel Standee Poster
+    standee_img = create_custom_qr_standee(upi_url, f"{price}")
 
     inline = telebot.types.InlineKeyboardMarkup()
     inline.add(
@@ -170,7 +233,7 @@ def generate_qr_handler(call):
     )
 
     caption_text = (
-        f"✨ **OFFICIAL ONLINE WATCH VIP PLAN** ✨\n\n"
+        f"👑 **DENZEL PREMIUM VIP ACCESS** 👑\n\n"
         f"📱 **SCAN & PAY ₹{price}**\n\n"
         f"📌 **UPI ID:** `{upi_id}` *(Tap text to Copy)*\n"
         f"💰 **Amount:** ₹{price}\n\n"
@@ -180,12 +243,13 @@ def generate_qr_handler(call):
     try:
         bot.send_photo(
             call.message.chat.id,
-            photo=qr_code_api,
+            photo=standee_img,
             caption=caption_text,
             reply_markup=inline,
             parse_mode="Markdown",
         )
-    except:
+    except Exception as e:
+        print("QR Error:", e)
         bot.send_message(
             call.message.chat.id,
             caption_text,
@@ -199,7 +263,7 @@ def generate_qr_handler(call):
 def show_demo_handler(call):
     try:
         bot.answer_callback_query(call.id)
-    except:
+    except Exception:
         pass
 
     user_id = call.from_user.id
@@ -208,9 +272,7 @@ def show_demo_handler(call):
 
     demo_file = get_config("demo_file_id")
     demo_type = get_config("demo_type")
-    demo_text = (
-        get_config("demo_text") or "🍿 **Here is our Demo Content!**"
-    )
+    demo_text = get_config("demo_text") or "👁️ **Here is our Demo Content!**"
 
     if not demo_file and not demo_text:
         bot.send_message(
@@ -223,7 +285,7 @@ def show_demo_handler(call):
     buy_kb = telebot.types.InlineKeyboardMarkup()
     buy_kb.add(
         telebot.types.InlineKeyboardButton(
-            f"💎 Buy Premium", callback_data="generate_qr"
+            "💎 Buy Premium", callback_data="generate_qr"
         )
     )
 
@@ -270,7 +332,7 @@ def show_demo_handler(call):
 def paid_main_handler(call):
     try:
         bot.answer_callback_query(call.id)
-    except:
+    except Exception:
         pass
 
     user_pending_folder[call.from_user.id] = "ONLINE_VIP_PLAN"
@@ -294,7 +356,6 @@ def folder_pass_menu(call):
         )
         return
 
-    # Default Instruction Text
     default_text = (
         "📁 **PER-FOLDER ACCESS PASS**\n\n"
         "💡 **Kaise Kaam Karta Hai?**\n"
@@ -353,7 +414,7 @@ def view_folder_cb(call):
     else:
         inline.add(
             telebot.types.InlineKeyboardButton(
-                f"💎 Buy Pass", callback_data=f"buy_folder_{folder}"
+                "💎 Buy Pass", callback_data=f"buy_folder_{folder}"
             )
         )
         status_info = (
@@ -371,7 +432,7 @@ def view_folder_cb(call):
     )
 
 
-# ================= GENERATE QR FOR SPECIFIC FOLDER =================
+# ================= GENERATE STANDEE QR FOR SPECIFIC FOLDER =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("buy_folder_"))
 def buy_folder_cb(call):
     user_id = call.from_user.id
@@ -381,18 +442,20 @@ def buy_folder_cb(call):
 
     user_pending_folder[user_id] = folder
 
-    upi_url = f"upi://pay?pa={upi_id}&pn=PremiumBot&am={f_price}&cu=INR"
-    qr_code_api = f"https://api.qrserver.com/v1/create-qr-code/?size=350x350&data={urllib.parse.quote(upi_url)}"
+    upi_url = f"upi://pay?pa={upi_id}&pn=DenzelPremium&am={f_price}&cu=INR"
+
+    # Custom Standee Image Generation
+    standee_img = create_custom_qr_standee(upi_url, f"{f_price}")
 
     inline = telebot.types.InlineKeyboardMarkup()
     inline.add(
         telebot.types.InlineKeyboardButton(
-            f"📸 Send Screenshot", callback_data=f"paid_folder_{folder}"
+            "📸 Send Screenshot", callback_data=f"paid_folder_{folder}"
         )
     )
 
     caption_text = (
-        f"⚡ **BUY DOWNLOAD & RE-FETCH PASS** ⚡\n\n"
+        f"👑 **DENZEL PREMIUM - FOLDER PASS** 👑\n\n"
         f"📂 **Selected Folder:** `{folder}`\n"
         f"💰 **Pass Amount:** ₹{f_price}\n"
         f"📌 **UPI ID:** `{upi_id}` *(Tap to Copy)*\n\n"
@@ -402,12 +465,13 @@ def buy_folder_cb(call):
     try:
         bot.send_photo(
             call.message.chat.id,
-            photo=qr_code_api,
+            photo=standee_img,
             caption=caption_text,
             reply_markup=inline,
             parse_mode="Markdown",
         )
-    except:
+    except Exception as e:
+        print("Folder QR Error:", e)
         bot.send_message(
             call.message.chat.id,
             caption_text,
@@ -416,9 +480,7 @@ def buy_folder_cb(call):
         )
 
 
-@bot.callback_query_handler(
-    func=lambda c: c.data.startswith("paid_folder_")
-)
+@bot.callback_query_handler(func=lambda c: c.data.startswith("paid_folder_"))
 def paid_folder_prompt(call):
     folder = call.data.replace("paid_folder_", "").strip()
     user_pending_folder[call.from_user.id] = folder
@@ -430,9 +492,7 @@ def paid_folder_prompt(call):
 
 
 # ================= RE-FETCH PASS HANDLER (15 MIN TIMER) =================
-@bot.callback_query_handler(
-    func=lambda c: c.data.startswith("refetch_pass_")
-)
+@bot.callback_query_handler(func=lambda c: c.data.startswith("refetch_pass_"))
 def refetch_pass_cb(call):
     user_id = call.from_user.id
     folder = call.data.replace("refetch_pass_", "").strip()
@@ -456,7 +516,7 @@ def refetch_pass_cb(call):
 
     sent_ids = []
     warning_caption = (
-        f"⚠️ *This video will auto-delete in 15 minutes! Re-fetch anytime.*"
+        "⚠️ *This video will auto-delete in 15 minutes! Re-fetch anytime.*"
     )
 
     for v in vids:
@@ -469,13 +529,12 @@ def refetch_pass_cb(call):
         )
         sent_ids.append(m.message_id)
 
-    # Set 15 Minutes Expiry Timer (900 seconds)
     set_expiry(user_id, sent_ids, call.message.chat.id, time.time() + 900)
 
     inline = telebot.types.InlineKeyboardMarkup()
     inline.add(
         telebot.types.InlineKeyboardButton(
-            f"🔄 Re-fetch Videos", callback_data=f"refetch_pass_{folder}"
+            "🔄 Re-fetch Videos", callback_data=f"refetch_pass_{folder}"
         )
     )
 
@@ -586,7 +645,7 @@ def handle_media(msg):
             set_config("demo_file_id", msg.photo[-1].file_id)
             set_config("demo_type", "photo")
 
-        caption = msg.caption or "🍿 **Here is our Demo Content!**"
+        caption = msg.caption or "👁️ **Here is our Demo Content!**"
         set_config("demo_text", caption)
         admin_states[ADMIN_ID] = None
         bot.reply_to(
@@ -706,13 +765,12 @@ def approve(call):
                 )
                 sent_ids.append(m.message_id)
 
-            # 15 Minutes Expiry Timer
             set_expiry(uid, sent_ids, uid, time.time() + 900)
 
             inline = telebot.types.InlineKeyboardMarkup()
             inline.add(
                 telebot.types.InlineKeyboardButton(
-                    f"🔄 Re-fetch Videos", callback_data=f"refetch_pass_{ptype}"
+                    "🔄 Re-fetch Videos", callback_data=f"refetch_pass_{ptype}"
                 )
             )
             bot.send_message(
@@ -783,7 +841,7 @@ def broadcast_msg(msg):
                 try:
                     bot.send_message(uid, f"**{text}**", parse_mode="Markdown")
                     time.sleep(0.05)
-                except:
+                except Exception:
                     pass
             bot.reply_to(msg, "✅ **Broadcast Sent!**", parse_mode="Markdown")
 
@@ -925,7 +983,6 @@ def open_folder_cb(call):
         )
         sent_videos[user_id].append(m.message_id)
 
-    # 15 Minutes Expiry Timer
     set_expiry(
         user_id, sent_videos[user_id], call.message.chat.id, time.time() + 900
     )
