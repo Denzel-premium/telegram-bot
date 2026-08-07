@@ -387,7 +387,7 @@ def refetch_pass_cb(call):
 
     sent_ids = []
     for v in vids:
-        m = bot.send_video(call.message.chat.id, v["file_id"], protect_content=False, caption="⚠️ Auto-delete in 15 minutes!")
+        m = bot.send_video(call.message.chat.id, v["file_id"], protect_content=True, caption="⚠️ Auto-delete in 15 minutes!")
         sent_ids.append(m.message_id)
 
     set_expiry(user_id, sent_ids, call.message.chat.id, time.time() + 900)
@@ -397,7 +397,7 @@ def refetch_pass_cb(call):
         telebot.types.InlineKeyboardButton("🔄 Re-fetch Videos", callback_data=f"refetch_pass_{folder}"),
         telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
     )
-    bot.send_message(call.message.chat.id, f"⏳ 15 Minutes Timer Started for {folder}!", reply_markup=inline)
+    bot.send_message(call.message.chat.id, f"⏳ 15 Minutes Timer Started for `{folder}`!", reply_markup=inline, parse_mode="Markdown")
 
 
 # ================= CHANNEL AUTO SAVE =================
@@ -602,7 +602,7 @@ def handle_media(msg):
         bot.send_message(msg.chat.id, f"⏳ Payment Screenshot Received for '{pending_folder}'! Wait for approval.")
 
 
-# ================= REQUESTS APPROVAL =================
+# ================= REQUESTS APPROVAL (FIXED EMPTY BUG) =================
 @bot.message_handler(commands=['requests'])
 def requests_cmd(msg):
     if not is_admin(msg.from_user.id):
@@ -641,21 +641,24 @@ def approve(call):
 
     remove_pending(uid)
 
+    # VIP ONLINE PLAN APPROVAL (NO EMPTY FOLDER BUG NOW)
     if ptype == "ONLINE_VIP_PLAN":
         add_premium(uid)
-        bot.send_message(uid, "🎉 **VIP Online Plan Approved!\n📥 Click 'Download' button below.**", parse_mode="Markdown")
+        bot.send_message(uid, "🎉 **VIP Online Plan Approved!**\n\n📥 Click **'Download'** button below to access all folders.", parse_mode="Markdown")
+    
+    # SPECIFIC FOLDER PASS APPROVAL
     else:
         grant_folder_access(uid, ptype)
-
         vids = get_videos(ptype) or []
+
         if not vids:
-            bot.send_message(uid, f"🎉 Approved Pass for `{ptype}`! But folder is empty.", parse_mode="Markdown")
+            bot.send_message(uid, f"🎉 Approved Pass for `{ptype}`! But this folder is currently empty.", parse_mode="Markdown")
         else:
             bot.send_message(uid, f"🎉 Approved Pass for `{ptype}`!\nSending videos now...", parse_mode="Markdown")
 
             sent_ids = []
             for v in vids:
-                m = bot.send_video(uid, v["file_id"], protect_content=False, caption=f"📂 Folder: `{ptype}`\n⚠️ Auto-delete in 15 min.", parse_mode="Markdown")
+                m = bot.send_video(uid, v["file_id"], protect_content=True, caption=f"📂 Folder: `{ptype}`\n⚠️ Auto-delete in 15 min.", parse_mode="Markdown")
                 sent_ids.append(m.message_id)
 
             set_expiry(uid, sent_ids, uid, time.time() + 900)
@@ -751,7 +754,7 @@ def download(msg):
     folders = get_folders() or []
 
     if not folders:
-        bot.send_message(msg.chat.id, "❌ No folders")
+        bot.send_message(msg.chat.id, "❌ No folders available")
         return
 
     for f in folders:
@@ -774,7 +777,7 @@ def open_folder(msg):
     vids = get_videos(folder) or []
 
     if not vids:
-        bot.send_message(msg.chat.id, "❌ No videos")
+        bot.send_message(msg.chat.id, "❌ No videos in this folder.")
         return
 
     sent_videos[user_id] = []
