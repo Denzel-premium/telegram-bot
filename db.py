@@ -1,8 +1,13 @@
 import os
 from pymongo import MongoClient
-from config import MONGO_URL
 
-client = MongoClient(MONGO_URI)
+# Safe MONGO_URL import (Error-proof)
+try:
+    from config import MONGO_URL
+except ImportError:
+    MONGO_URL = os.getenv("MONGO_URL") or os.getenv("MONGO_URI")
+
+client = MongoClient(MONGO_URL)
 db = client["telegram_bot_db"]
 
 # Collections
@@ -44,20 +49,19 @@ def get_pending():
 def remove_pending(user_id):
     pending_col.delete_many({"user_id": int(user_id)})
 
-# ================= VIDEOS & FOLDERS (SAFE FETCH) =================
+# VIDEOS & FOLDERS (SAFE CASE-INSENSITIVE SEARCH)
 def add_video(folder, file_id):
     clean_folder = str(folder).strip()
     videos_col.insert_one({"folder": clean_folder, "file_id": file_id})
 
 def get_videos(folder):
     clean_folder = str(folder).strip()
-    # Case-Insensitive Search: Capital ya Small mismatch ki wajah se kabhi video miss nahi hogi
+    # Case-Insensitive Matching
     vids = list(videos_col.find({"folder": {"$regex": f"^{clean_folder}$", "$options": "i"}}))
     return vids
 
 def get_folders():
     folders = videos_col.distinct("folder")
-    # Clean unique folder names list
     clean_folders = []
     for f in folders:
         if f and str(f).strip():
@@ -75,7 +79,7 @@ def delete_video(folder, index):
     if 0 <= index < len(vids):
         videos_col.delete_one({"_id": vids[index]["_id"]})
 
-# ================= EXPIRY SYSTEM =================
+# EXPIRY SYSTEM
 def set_expiry(user_id, message_ids, chat_id, expiry_time):
     expiry_col.insert_one({
         "user_id": int(user_id),
