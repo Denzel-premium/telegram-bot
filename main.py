@@ -2,7 +2,6 @@ import io
 import threading
 import time
 import urllib.parse
-from PIL import Image, ImageDraw
 import requests
 import telebot
 
@@ -25,6 +24,8 @@ channel_folder = "DEFAULT"
 
 # ================= HELPER FUNCTIONS =================
 def is_admin(user_id):
+    if not ADMIN_ID:
+        return False
     return str(user_id).strip() == str(ADMIN_ID).strip()
 
 
@@ -50,7 +51,7 @@ def has_folder_access(user_id, folder_name):
     )
 
 
-# ================= EXPIRY WORKER (AUTO-DELETE 15 MIN) =================
+# ================= EXPIRY WORKER (AUTO DELETE) =================
 def expiry_worker():
     while True:
         try:
@@ -76,48 +77,7 @@ def expiry_worker():
 threading.Thread(target=expiry_worker, daemon=True).start()
 
 
-# ================= STANDEE QR GENERATOR =================
-def create_custom_qr_standee(upi_url, price_text):
-    width, height = 450, 700
-    img = Image.new("RGB", (width, height), color="#FFFFFF")
-    draw = ImageDraw.Draw(img)
-
-    # Golden Frame
-    draw.rectangle([15, 15, width - 15, height - 15], outline="#D4AF37", width=4)
-    draw.rectangle([22, 22, width - 22, height - 22], outline="#F3E5AB", width=2)
-
-    # Header Branding
-    draw.text((width // 2, 55), "👑", fill="#D4AF37", anchor="mm")
-    draw.text((width // 2, 100), "DENZEL PREMIUM", fill="#000000", anchor="mm")
-    draw.text((width // 2, 140), f"Pay Rs.{price_text} Here", fill="#D4AF37", anchor="mm")
-
-    # QR Code Fetch
-    qr_api = (
-        f"https://api.qrserver.com/v1/create-qr-code/?"
-        f"size=200x200&margin=12&bgcolor=ffffff&color=000000&"
-        f"data={urllib.parse.quote(upi_url)}"
-    )
-    res = requests.get(qr_api, timeout=10)
-    qr_img = Image.open(io.BytesIO(res.content))
-
-    qr_x, qr_y = (width - 200) // 2, 190
-    img.paste(qr_img, (qr_x, qr_y))
-
-    draw.rectangle([qr_x - 6, qr_y - 6, qr_x + 200 + 6, qr_y + 200 + 6], outline="#D4AF37", width=3)
-
-    # Footer Stand Base
-    draw.text((width // 2, 440), "Scan & Pay for VIP Access", fill="#333333", anchor="mm")
-    draw.rectangle([50, 490, width - 50, 508], fill="#D4AF37")
-    draw.rectangle([75, 508, width - 75, 518], fill="#AA7C11")
-    draw.text((width // 2, 570), "✨ Thank You For Choosing Us ✨", fill="#888888", anchor="mm")
-
-    bio = io.BytesIO()
-    img.save(bio, format="PNG")
-    bio.seek(0)
-    return bio
-
-
-# ================= START COMMAND =================
+# ================= START =================
 @bot.message_handler(commands=['start'])
 def start(msg):
     track_user(msg.from_user.id)
@@ -131,30 +91,26 @@ def start(msg):
 
     inline = telebot.types.InlineKeyboardMarkup(row_width=1)
     inline.add(
-        telebot.types.InlineKeyboardButton("💎 Buy Premium", callback_data="generate_qr"),
+        telebot.types.InlineKeyboardButton(f"💰 Buy Premium ₹{price}", callback_data="generate_qr"),
         telebot.types.InlineKeyboardButton("👁️ Demo", callback_data="show_demo"),
         telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid_main"),
         telebot.types.InlineKeyboardButton("📂 Folder Passes", callback_data="folder_pass_menu"),
     )
 
-    caption_full = (
-        f"**{text}**\n\n"
-        f"💰 **Online Watch Premium: ₹{price}**\n\n"
-        f"👇 **Niche Diye Gaye Buttons Ka Use Karein:**"
-    )
+    caption_full = f"{text}\n\n💰 Price: ₹{price}"
 
     if start_image:
         try:
-            bot.send_photo(msg.chat.id, photo=start_image, caption=caption_full, reply_markup=kb, parse_mode="Markdown")
+            bot.send_photo(msg.chat.id, photo=start_image, caption=caption_full, reply_markup=kb)
         except Exception:
-            bot.send_message(msg.chat.id, caption_full, reply_markup=kb, parse_mode="Markdown")
+            bot.send_message(msg.chat.id, caption_full, reply_markup=kb)
     else:
-        bot.send_message(msg.chat.id, caption_full, reply_markup=kb, parse_mode="Markdown")
+        bot.send_message(msg.chat.id, caption_full, reply_markup=kb)
 
-    bot.send_message(msg.chat.id, "👇 **Select option below:**", reply_markup=inline, parse_mode="Markdown")
+    bot.send_message(msg.chat.id, "👇 Select Option Below:", reply_markup=inline)
 
 
-# ================= BUY PREMIUM (VIP STANDEE QR) =================
+# ================= SIMPLE & COMPACT QR CODE =================
 @bot.callback_query_handler(func=lambda call: call.data == "generate_qr")
 def generate_qr_handler(call):
     try:
@@ -164,32 +120,26 @@ def generate_qr_handler(call):
 
     price = get_config("price") or "29"
     upi_id = get_config("upi_id") or "example@upi"
-    upi_url = f"upi://pay?pa={upi_id}&pn=DenzelPremium&am={price}&cu=INR"
+    upi_url = f"upi://pay?pa={upi_id}&pn=Premium&am={price}&cu=INR"
 
     inline = telebot.types.InlineKeyboardMarkup()
     inline.add(telebot.types.InlineKeyboardButton("💳 Upload Screenshot", callback_data="paid_main"))
 
     caption_text = (
-        f"👑 **DENZEL PREMIUM VIP ACCESS** 👑\n\n"
-        f"📱 **SCAN & PAY ₹{price}**\n\n"
-        f"📌 **UPI ID:** `{upi_id}` *(Tap text to Copy)*\n"
-        f"💰 **Amount:** ₹{price}\n\n"
-        f"👇 **Scan QR or copy UPI ID to pay, then click 'Upload Screenshot' below!**"
+        f"👑 VIP ACCESS PASS 👑\n\n"
+        f"📱 SCAN & PAY ₹{price}\n"
+        f"📌 UPI ID: {upi_id}\n"
+        f"💰 Amount: ₹{price}\n\n"
+        f"👇 Pay karke 'Upload Screenshot' par click karein!"
     )
 
+    qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&bgcolor=ffffff&color=000000&data={urllib.parse.quote(upi_url)}"
+
     try:
-        standee_img = create_custom_qr_standee(upi_url, f"{price}")
-        bot.send_photo(
-            call.message.chat.id,
-            photo=standee_img,
-            caption=caption_text,
-            reply_markup=inline,
-            parse_mode="Markdown",
-        )
+        bot.send_photo(call.message.chat.id, photo=qr_api, caption=caption_text, reply_markup=inline)
     except Exception as e:
         print("QR Error:", e)
-        qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={urllib.parse.quote(upi_url)}"
-        bot.send_photo(call.message.chat.id, photo=qr_api, caption=caption_text, reply_markup=inline, parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, f"{caption_text}\n\n📌 UPI: {upi_id}", reply_markup=inline)
 
 
 # ================= DEMO HANDLER =================
@@ -205,30 +155,26 @@ def show_demo_handler(call):
 
     demo_file = get_config("demo_file_id")
     demo_type = get_config("demo_type")
-    demo_text = get_config("demo_text") or "👁️ **Here is our Demo Content!**"
+    demo_text = get_config("demo_text") or "👁️ Here is Demo Content!"
 
     if not demo_file and not demo_text:
-        bot.send_message(chat_id, "❌ **Demo content currently available nahi hai.**", parse_mode="Markdown")
+        bot.send_message(chat_id, "❌ Demo content available nahi hai.")
         return
 
     buy_kb = telebot.types.InlineKeyboardMarkup()
     buy_kb.add(telebot.types.InlineKeyboardButton("💎 Buy Premium", callback_data="generate_qr"))
 
     sent_demo_ids = []
-    demo_caption = (
-        f"{demo_text}\n\n"
-        f"🚨 **LIMITED TIME DEMO ACCESS** 🚨\n"
-        f"⚠️ **Yeh demo content 10 minute me automatically delete ho jayega!**"
-    )
+    demo_caption = f"{demo_text}\n\n⚠️ Yeh demo 10 minute me delete ho jayega!"
 
     if demo_type == "video" and demo_file:
-        m1 = bot.send_video(chat_id, video=demo_file, caption=demo_caption, parse_mode="Markdown", reply_markup=buy_kb, protect_content=True)
+        m1 = bot.send_video(chat_id, video=demo_file, caption=demo_caption, reply_markup=buy_kb, protect_content=True)
         sent_demo_ids.append(m1.message_id)
     elif demo_type == "photo" and demo_file:
-        m1 = bot.send_photo(chat_id, photo=demo_file, caption=demo_caption, parse_mode="Markdown", reply_markup=buy_kb)
+        m1 = bot.send_photo(chat_id, photo=demo_file, caption=demo_caption, reply_markup=buy_kb)
         sent_demo_ids.append(m1.message_id)
     else:
-        m1 = bot.send_message(chat_id, f"{demo_caption}", parse_mode="Markdown", reply_markup=buy_kb)
+        m1 = bot.send_message(chat_id, demo_caption, reply_markup=buy_kb)
         sent_demo_ids.append(m1.message_id)
 
     set_expiry(user_id, sent_demo_ids, chat_id, time.time() + 600)
@@ -243,7 +189,7 @@ def paid_main_handler(call):
         pass
 
     user_pending_folder[call.from_user.id] = "ONLINE_VIP_PLAN"
-    bot.send_message(call.message.chat.id, "📸 **Payment hone ke baad yahan Screenshot bhejo.**", parse_mode="Markdown")
+    bot.send_message(call.message.chat.id, "📸 Payment hone ke baad yahan Screenshot bhejo")
 
 
 # ================= FOLDER PASSES MENU =================
@@ -252,21 +198,10 @@ def folder_pass_menu(call):
     user_id = call.from_user.id
     folders = get_folders()
     if not folders:
-        bot.send_message(call.message.chat.id, "❌ **No folders available**", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "❌ No folders available")
         return
 
-    default_text = (
-        "📁 **PER-FOLDER ACCESS PASS**\n\n"
-        "💡 **Kaise Kaam Karta Hai?**\n"
-        "👉 Niche se apna **Folder Select** karein aur uska **Pass Buy** karein.\n"
-        "👉 Approval milte hi folder ki saari videos aapko bhej di jayengi.\n\n"
-        "⏱️ **15 Minute Auto-Delete:**\n"
-        "⚠️ Security ke liye videos **15 minute me auto-delete** ho jayengi.\n\n"
-        "🔄 **Lifetime Re-Fetch Access:**\n"
-        "🎉 Access Pass hone par aap **`🔄 Re-fetch`** button daba kar kitni bhi baar videos **DOHBARA** 15 min ke liye mangwa sakte hain!\n\n"
-        "👇 **Niche Folder Select Karein:**"
-    )
-
+    default_text = "📁 PER-FOLDER ACCESS PASS\n\nNiche se apna Folder Select karke Pass Buy karein:"
     pass_instruction = get_config("pass_text") or default_text
 
     inline = telebot.types.InlineKeyboardMarkup()
@@ -275,10 +210,10 @@ def folder_pass_menu(call):
         status_text = " ✅" if has_folder_access(user_id, f) else f" • ₹{f_price}"
         inline.add(telebot.types.InlineKeyboardButton(f"📂 {f}{status_text}", callback_data=f"view_folder_{f}"))
 
-    bot.send_message(call.message.chat.id, pass_instruction, reply_markup=inline, parse_mode="Markdown")
+    bot.send_message(call.message.chat.id, pass_instruction, reply_markup=inline)
 
 
-# ================= VIEW FOLDER DETAILS & BUY/RE-FETCH =================
+# ================= VIEW FOLDER DETAILS =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("view_folder_"))
 def view_folder_cb(call):
     user_id = call.from_user.id
@@ -289,27 +224,20 @@ def view_folder_cb(call):
     inline = telebot.types.InlineKeyboardMarkup()
 
     if has_folder_access(user_id, folder):
-        inline.add(telebot.types.InlineKeyboardButton(f"🔄 Re-fetch `{folder}`", callback_data=f"refetch_pass_{folder}"))
-        status_info = (
-            "✅ **Aapke paas is folder ka Approved Pass hai!**\n"
-            "Videos 15 min me delete hone ke baad aap jab chahe Re-fetch kar sakte hain."
-        )
+        inline.add(telebot.types.InlineKeyboardButton(f"🔄 Re-fetch {folder}", callback_data=f"refetch_pass_{folder}"))
+        status_info = "✅ Aapke paas is folder ka Approved Pass hai!"
     else:
         inline.add(telebot.types.InlineKeyboardButton("💎 Buy Pass", callback_data=f"buy_folder_{folder}"))
-        status_info = (
-            f"💰 **Download Pass Price:** ₹{f_price}\n"
-            f"📌 *Is pass ko buy karne se videos 15 min timer + Infinite Re-Fetch Access ke sath milengi!*"
-        )
+        status_info = f"💰 Pass Price: ₹{f_price}"
 
     bot.send_message(
         call.message.chat.id,
-        f"📂 **FOLDER:** `{folder}`\n🎬 **Total Videos:** `{vids_count}`\n\n{status_info}",
-        reply_markup=inline,
-        parse_mode="Markdown"
+        f"📂 FOLDER: {folder}\n🎬 Total Videos: {vids_count}\n\n{status_info}",
+        reply_markup=inline
     )
 
 
-# ================= GENERATE STANDEE QR FOR SPECIFIC FOLDER =================
+# ================= GENERATE QR FOR SPECIFIC FOLDER =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("buy_folder_"))
 def buy_folder_cb(call):
     user_id = call.from_user.id
@@ -318,39 +246,31 @@ def buy_folder_cb(call):
     upi_id = get_config("upi_id") or "example@upi"
 
     user_pending_folder[user_id] = folder
-    upi_url = f"upi://pay?pa={upi_id}&pn=DenzelPremium&am={f_price}&cu=INR"
+    upi_url = f"upi://pay?pa={upi_id}&pn=Premium&am={f_price}&cu=INR"
 
     inline = telebot.types.InlineKeyboardMarkup()
     inline.add(telebot.types.InlineKeyboardButton("📸 Send Screenshot", callback_data=f"paid_folder_{folder}"))
 
     caption_text = (
-        f"👑 **DENZEL PREMIUM - FOLDER PASS** 👑\n\n"
-        f"📂 **Selected Folder:** `{folder}`\n"
-        f"💰 **Pass Amount:** ₹{f_price}\n"
-        f"📌 **UPI ID:** `{upi_id}` *(Tap to Copy)*\n\n"
-        f"👇 **Scan QR karke ₹{f_price} pay karein aur 'Send Screenshot' button par click karke photo bhejein!**"
+        f"📂 FOLDER PASS: {folder}\n"
+        f"💰 Amount: ₹{f_price}\n"
+        f"📌 UPI ID: {upi_id}\n\n"
+        f"👇 Pay karke Screenshot bhejein!"
     )
 
+    qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&bgcolor=ffffff&color=000000&data={urllib.parse.quote(upi_url)}"
+
     try:
-        standee_img = create_custom_qr_standee(upi_url, f"{f_price}")
-        bot.send_photo(
-            call.message.chat.id,
-            photo=standee_img,
-            caption=caption_text,
-            reply_markup=inline,
-            parse_mode="Markdown",
-        )
-    except Exception as e:
-        print("Folder QR Error:", e)
-        qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={urllib.parse.quote(upi_url)}"
-        bot.send_photo(call.message.chat.id, photo=qr_api, caption=caption_text, reply_markup=inline, parse_mode="Markdown")
+        bot.send_photo(call.message.chat.id, photo=qr_api, caption=caption_text, reply_markup=inline)
+    except Exception:
+        bot.send_message(call.message.chat.id, caption_text, reply_markup=inline)
 
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("paid_folder_"))
 def paid_folder_prompt(call):
     folder = call.data.replace("paid_folder_", "").strip()
     user_pending_folder[call.from_user.id] = folder
-    bot.send_message(call.message.chat.id, f"📸 **Abhi payment ka Screenshot yahan bhejein (Folder: `{folder}`):**", parse_mode="Markdown")
+    bot.send_message(call.message.chat.id, f"📸 Payment ka Screenshot bhejein (Folder: {folder}):")
 
 
 # ================= RE-FETCH PASS HANDLER =================
@@ -360,32 +280,24 @@ def refetch_pass_cb(call):
     folder = call.data.replace("refetch_pass_", "").strip()
 
     if not has_folder_access(user_id, folder):
-        bot.answer_callback_query(call.id, f"❌ Aapke paas '{folder}' ka active pass nahi hai!", show_alert=True)
+        bot.answer_callback_query(call.id, f"❌ Active pass nahi hai!", show_alert=True)
         return
 
     vids = get_videos(folder)
     if not vids:
-        bot.send_message(call.message.chat.id, f"❌ **Folder `{folder}` is empty.**", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, f"❌ Folder '{folder}' khali hai.")
         return
 
     sent_ids = []
-    warning_caption = "⚠️ *This video will auto-delete in 15 minutes! Re-fetch anytime.*"
-
     for v in vids:
-        m = bot.send_video(call.message.chat.id, v["file_id"], protect_content=False, caption=warning_caption, parse_mode="Markdown")
+        m = bot.send_video(call.message.chat.id, v["file_id"], protect_content=False, caption="⚠️ Auto-delete in 15 minutes!")
         sent_ids.append(m.message_id)
 
     set_expiry(user_id, sent_ids, call.message.chat.id, time.time() + 900)
 
     inline = telebot.types.InlineKeyboardMarkup()
     inline.add(telebot.types.InlineKeyboardButton("🔄 Re-fetch Videos", callback_data=f"refetch_pass_{folder}"))
-
-    bot.send_message(
-        call.message.chat.id,
-        f"⏳ **15 Minutes Timer Started for `{folder}`!**\nVideos delete hone ke baad niche button se dobara Mangwa sakte hain:",
-        reply_markup=inline,
-        parse_mode="Markdown"
-    )
+    bot.send_message(call.message.chat.id, f"⏳ 15 Minutes Timer Started for {folder}!", reply_markup=inline)
 
 
 # ================= CHANNEL AUTO SAVE =================
@@ -395,7 +307,7 @@ def auto_save_channel(msg):
     print(f"Saved in folder: {channel_folder}")
 
 
-# ================= ADMIN PANEL =================
+# ================= ADMIN PANEL (PARSE MODE REMOVED = NO CRASH) =================
 @bot.message_handler(commands=['admin'])
 def admin(msg):
     if not is_admin(msg.from_user.id):
@@ -403,8 +315,8 @@ def admin(msg):
         return
 
     text = (
-        "🛠 **ADMIN PANEL**\n\n"
-        "⚙️ **SETTINGS:**\n"
+        "🛠 ADMIN PANEL\n\n"
+        "⚙️ SETTINGS:\n"
         "✏️ /setstart TEXT\n"
         "🖼 /setimage (Set Banner Photo)\n"
         "🎬 /setdemo (Set Demo Video)\n"
@@ -419,13 +331,13 @@ def admin(msg):
         "📂 /setchannelfolder NAME\n"
         "📁 /folders\n"
         "🗑 /delfolder NAME\n"
-        "❌ /delvideo INDEX\n"
+        "❌ /delvideo INDEX"
     )
 
-    bot.send_message(msg.chat.id, text, parse_mode="Markdown")
+    bot.send_message(msg.chat.id, text)
 
 
-# ================= ADMIN SETTINGS COMMANDS =================
+# ================= SETTINGS COMMANDS =================
 @bot.message_handler(commands=['setchannelfolder'])
 def set_channel_folder(msg):
     global channel_folder
@@ -463,7 +375,7 @@ def setupi(msg):
     parts = msg.text.split(" ", 1)
     if len(parts) > 1:
         set_config("upi_id", parts[1].strip())
-        bot.reply_to(msg, f"✅ **UPI ID set to:** `{parts[1].strip()}`", parse_mode="Markdown")
+        bot.reply_to(msg, f"✅ UPI ID set to: {parts[1].strip()}")
 
 
 @bot.message_handler(commands=['setfolderprice'])
@@ -472,12 +384,12 @@ def setfolderprice(msg):
         return
     parts = msg.text.split(" ", 2)
     if len(parts) < 3:
-        bot.reply_to(msg, "❌ **Usage:** `/setfolderprice FOLDER_NAME PRICE`", parse_mode="Markdown")
+        bot.reply_to(msg, "❌ Usage: /setfolderprice FOLDER_NAME PRICE")
         return
 
     fname, fprice = parts[1].strip(), parts[2].strip()
     set_config(f"folder_price_{fname}", fprice)
-    bot.reply_to(msg, f"✅ **Folder `{fname}` price set to ₹{fprice}**", parse_mode="Markdown")
+    bot.reply_to(msg, f"✅ Folder '{fname}' price set to ₹{fprice}")
 
 
 @bot.message_handler(commands=['setpasstext'])
@@ -486,25 +398,25 @@ def setpasstext(msg):
         return
     new_text = msg.text.replace("/setpasstext", "").strip()
     if not new_text:
-        bot.reply_to(msg, "❌ **Usage:** `/setpasstext YOUR_CUSTOM_TEXT`", parse_mode="Markdown")
+        bot.reply_to(msg, "❌ Usage: /setpasstext YOUR_CUSTOM_TEXT")
         return
 
     set_config("pass_text", new_text)
-    bot.reply_to(msg, "✅ **Folder Pass instruction text updated!**", parse_mode="Markdown")
+    bot.reply_to(msg, "✅ Folder Pass text updated!")
 
 
 @bot.message_handler(commands=['setdemo'])
 def setdemo_cmd(msg):
     if is_admin(msg.from_user.id):
         admin_states[msg.from_user.id] = "awaiting_demo_content"
-        bot.reply_to(msg, "🎬 **Abhi Demo Video/Photo text ke saath bhejo:**", parse_mode="Markdown")
+        bot.reply_to(msg, "🎬 Abhi Demo Video/Photo text ke saath bhejo:")
 
 
 @bot.message_handler(commands=['setimage'])
 def setimage_cmd(msg):
     if is_admin(msg.from_user.id):
         admin_states[msg.from_user.id] = "awaiting_start_image"
-        bot.reply_to(msg, "📸 **Abhi start banner image bhejo:**", parse_mode="Markdown")
+        bot.reply_to(msg, "📸 Abhi start banner image bhejo:")
 
 
 @bot.message_handler(commands=['broadcast'])
@@ -516,11 +428,11 @@ def broadcast_msg(msg):
             users = list(set(list(db_users) + list(all_user_ids)))
             for uid in users:
                 try:
-                    bot.send_message(uid, f"**{text}**", parse_mode="Markdown")
+                    bot.send_message(uid, text)
                     time.sleep(0.05)
                 except Exception:
                     pass
-            bot.reply_to(msg, "✅ **Broadcast Sent!**", parse_mode="Markdown")
+            bot.reply_to(msg, "✅ Broadcast Sent!")
 
 
 @bot.message_handler(commands=['stats'])
@@ -528,10 +440,10 @@ def stats(msg):
     if is_admin(msg.from_user.id):
         db_users = get_all_users() or []
         users_count = len(set(list(db_users) + list(all_user_ids)))
-        bot.send_message(msg.chat.id, f"📊 **BOT STATS**\n\n👥 **Total Users:** {users_count}\n📂 **Folders:** {len(get_folders())}", parse_mode="Markdown")
+        bot.send_message(msg.chat.id, f"📊 BOT STATS\n\n👥 Total Users: {users_count}\n📂 Folders: {len(get_folders())}")
 
 
-# ================= MEDIA HANDLER (SCREENSHOTS / ADMIN INPUT) =================
+# ================= MEDIA HANDLER =================
 @bot.message_handler(content_types=['photo', 'video'])
 def handle_media(msg):
     track_user(msg.from_user.id)
@@ -545,37 +457,32 @@ def handle_media(msg):
             set_config("demo_file_id", msg.photo[-1].file_id)
             set_config("demo_type", "photo")
 
-        caption = msg.caption or "👁️ **Here is our Demo Content!**"
+        caption = msg.caption or "👁️ Here is our Demo Content!"
         set_config("demo_text", caption)
         admin_states[user_id] = None
-        bot.reply_to(msg, "✅ **Demo updated successfully!**", parse_mode="Markdown")
+        bot.reply_to(msg, "✅ Demo updated successfully!")
         return
 
     if is_admin(user_id) and admin_states.get(user_id) == "awaiting_start_image" and msg.content_type == "photo":
         set_config("start_image", msg.photo[-1].file_id)
         admin_states[user_id] = None
-        bot.reply_to(msg, "✅ **Start Banner Photo updated!**", parse_mode="Markdown")
+        bot.reply_to(msg, "✅ Start Banner Photo updated!")
         return
 
     if is_admin(user_id) and msg.content_type == "video":
         if user_id not in current_folder:
-            bot.reply_to(msg, "❌ **Use /setfolder first**", parse_mode="Markdown")
+            bot.reply_to(msg, "❌ Use /setfolder first")
             return
         folder = current_folder[user_id]
         add_video(folder, msg.video.file_id)
-        bot.reply_to(msg, f"✅ **Saved in {folder}**", parse_mode="Markdown")
+        bot.reply_to(msg, f"✅ Saved in {folder}")
         return
 
     if msg.content_type == "photo":
         pending_folder = user_pending_folder.get(user_id, "ONLINE_VIP_PLAN")
         add_pending(user_id, msg.photo[-1].file_id)
         set_config(f"pending_type_{user_id}", pending_folder)
-
-        bot.send_message(
-            msg.chat.id,
-            f"⏳ **Payment Screenshot Received for `{pending_folder}`! Wait for admin approval.**",
-            parse_mode="Markdown",
-        )
+        bot.send_message(msg.chat.id, f"⏳ Payment Screenshot Received for '{pending_folder}'! Wait for approval.")
 
 
 # ================= REQUESTS APPROVAL =================
@@ -603,9 +510,8 @@ def requests_cmd(msg):
         bot.send_photo(
             msg.chat.id,
             d["file_id"],
-            caption=f"📩 **PAYMENT REQUEST**\n\n👤 **User:** `{uid}`\n📂 **Plan:** `{ptype}`\n💰 **Price:** ₹{f_price}",
-            reply_markup=kb,
-            parse_mode="Markdown"
+            caption=f"📩 PAYMENT REQUEST\n\n👤 User: {uid}\n📂 Plan: {ptype}\n💰 Price: ₹{f_price}",
+            reply_markup=kb
         )
 
 
@@ -619,28 +525,28 @@ def approve(call):
 
     if ptype == "ONLINE_VIP_PLAN":
         add_premium(uid)
-        bot.send_message(uid, "🎉 **VIP Online Plan Approved!\n📥 Click 'Download' button below to view content.**", parse_mode="Markdown")
+        bot.send_message(uid, "🎉 VIP Online Plan Approved!\n📥 Click 'Download' button below.")
     else:
         grant_folder_access(uid, ptype)
 
         vids = get_videos(ptype)
         if not vids:
-            bot.send_message(uid, f"🎉 **Approved Pass for `{ptype}`! But folder is empty.**", parse_mode="Markdown")
+            bot.send_message(uid, f"🎉 Approved Pass for {ptype}! But folder is empty.")
         else:
-            bot.send_message(uid, f"🎉 **Approved Pass for `{ptype}`!\nSending videos now...**", parse_mode="Markdown")
+            bot.send_message(uid, f"🎉 Approved Pass for {ptype}!\nSending videos now...")
 
             sent_ids = []
             for v in vids:
-                m = bot.send_video(uid, v["file_id"], protect_content=False, caption=f"📂 **Folder:** `{ptype}`\n⚠️ *Auto-delete in 15 min.*")
+                m = bot.send_video(uid, v["file_id"], protect_content=False, caption=f"📂 Folder: {ptype}\n⚠️ Auto-delete in 15 min.")
                 sent_ids.append(m.message_id)
 
             set_expiry(uid, sent_ids, uid, time.time() + 900)
 
             inline = telebot.types.InlineKeyboardMarkup()
             inline.add(telebot.types.InlineKeyboardButton("🔄 Re-fetch Videos", callback_data=f"refetch_pass_{ptype}"))
-            bot.send_message(uid, f"⏳ **15 Minutes Timer Started for `{ptype}`!**\nVideos delete hone ke baad dobara Re-fetch karein:", reply_markup=inline, parse_mode="Markdown")
+            bot.send_message(uid, f"⏳ 15 Minutes Timer Started for {ptype}!", reply_markup=inline)
 
-    bot.send_message(call.message.chat.id, f"✅ **Approved user {uid} for `{ptype}`!**", parse_mode="Markdown")
+    bot.send_message(call.message.chat.id, f"✅ Approved user {uid} for {ptype}!")
 
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("rej_"))
@@ -648,7 +554,7 @@ def reject(call):
     parts = call.data.split("_")
     uid = int(parts[1])
     remove_pending(uid)
-    bot.send_message(uid, "❌ **Payment Rejected**", parse_mode="Markdown")
+    bot.send_message(uid, "❌ Payment Rejected")
     bot.send_message(call.message.chat.id, f"❌ Rejected user {uid}")
 
 
@@ -674,8 +580,8 @@ def showfolders(msg):
     for f in data:
         f_price = get_config(f"folder_price_{f}") or "49"
         count = len(get_videos(f))
-        text += f"👉 `{f}` ({count} vids) - Pass: ₹{f_price}\n"
-    bot.send_message(msg.chat.id, text, parse_mode="Markdown")
+        text += f"👉 {f} ({count} vids) - Pass: ₹{f_price}\n"
+    bot.send_message(msg.chat.id, text)
 
 
 @bot.message_handler(commands=['delfolder'])
