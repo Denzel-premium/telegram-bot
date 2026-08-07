@@ -79,7 +79,7 @@ def remove_pending(user_id):
     pending.delete_many({"user_id": int(user_id)})
 
 
-# ================= VIDEOS =================
+# ================= VIDEOS (FIXED CASE-INSENSITIVE FETCH) =================
 def add_video(folder, file_id):
     clean_folder = str(folder).strip()
     if not videos.find_one({"file_id": file_id}):
@@ -94,7 +94,9 @@ def get_folders():
 
 def get_videos(folder):
     clean_folder = str(folder).strip()
+    # Direct Exact Match Check
     vids = list(videos.find({"folder": clean_folder}).sort("_id", -1))
+    # Fallback to Case-Insensitive Match if not found
     if not vids:
         vids = list(videos.find({"folder": {"$regex": f"^{clean_folder}$", "$options": "i"}}).sort("_id", -1))
     return vids
