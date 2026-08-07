@@ -38,16 +38,18 @@ def track_user(user_id):
 
 
 def grant_folder_access(user_id, folder_name):
-    if user_id not in user_folder_access:
-        user_folder_access[user_id] = []
-    if folder_name not in user_folder_access[user_id]:
-        user_folder_access[user_id].append(folder_name)
+    uid = str(user_id)
+    if uid not in user_folder_access:
+        user_folder_access[uid] = []
+    if folder_name not in user_folder_access[uid]:
+        user_folder_access[uid].append(folder_name)
 
 
 def has_folder_access(user_id, folder_name):
+    uid = str(user_id)
     return (
-        user_id in user_folder_access
-        and folder_name in user_folder_access[user_id]
+        uid in user_folder_access
+        and folder_name in user_folder_access[uid]
     )
 
 
@@ -60,7 +62,7 @@ def build_main_menu():
     inline.add(
         telebot.types.InlineKeyboardButton(f"💰 Buy Premium ₹{price}", callback_data="generate_qr"),
         telebot.types.InlineKeyboardButton("👁️ Demo", callback_data="show_demo"),
-        telebot.types.InlineKeyboardButton("📸 I have paid", callback_data="paid_main"),
+        telebot.types.InlineKeyboardButton("📸 Upload Screenshot", callback_data="paid_main"),
         telebot.types.InlineKeyboardButton("📂 Folder Passes", callback_data="folder_pass_menu"),
     )
     return text, inline
@@ -132,7 +134,7 @@ def go_home_handler(call):
     bot.send_message(call.message.chat.id, text, reply_markup=inline, parse_mode="Markdown")
 
 
-# ================= BUY PREMIUM (CLEAR SCREENSHOT MSG) =================
+# ================= BUY PREMIUM =================
 @bot.callback_query_handler(func=lambda call: call.data == "generate_qr")
 def generate_qr_handler(call):
     try:
@@ -156,7 +158,7 @@ def generate_qr_handler(call):
         f"📌 **UPI ID:** `{upi_id}` *(Tap to copy)*\n"
         f"💰 **Amount:** ₹{price}\n\n"
         f"🚨 **IMPORTANT STEP:** 🚨\n"
-        f"👉 **Payment karne ke baad niche [ 📸 Upload Screenshot ] button par click karein aur payment ka photo yahan chat me bhej dein!**"
+        f"👉 **Payment karne ke baad [ 📸 Upload Screenshot ] button par click karein aur payment screenshot bhej dein!**"
     )
 
     qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&bgcolor=ffffff&color=000000&data={urllib.parse.quote(upi_url)}"
@@ -251,7 +253,7 @@ def paid_main_handler(call):
 @bot.callback_query_handler(func=lambda call: call.data == "folder_pass_menu")
 def folder_pass_menu(call):
     user_id = call.from_user.id
-    folders = get_folders()
+    folders = get_folders() or []
     if not folders:
         bot.answer_callback_query(call.id, "❌ No folders available", show_alert=True)
         return
@@ -262,8 +264,10 @@ def folder_pass_menu(call):
     inline = telebot.types.InlineKeyboardMarkup(row_width=1)
     for f in folders:
         f_price = get_config(f"folder_price_{f}") or "49"
+        vids = get_videos(f) or []
+        v_count = len(vids)
         status_text = " ✅" if has_folder_access(user_id, f) else f" • ₹{f_price}"
-        inline.add(telebot.types.InlineKeyboardButton(f"📂 {f}{status_text}", callback_data=f"view_folder_{f}"))
+        inline.add(telebot.types.InlineKeyboardButton(f"📂 {f} ({v_count} Vids){status_text}", callback_data=f"view_folder_{f}"))
 
     inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
 
@@ -283,7 +287,8 @@ def view_folder_cb(call):
     user_id = call.from_user.id
     folder = call.data.replace("view_folder_", "").strip()
     f_price = get_config(f"folder_price_{folder}") or "49"
-    vids_count = len(get_videos(folder))
+    vids = get_videos(folder) or []
+    vids_count = len(vids)
 
     inline = telebot.types.InlineKeyboardMarkup(row_width=1)
 
@@ -328,7 +333,7 @@ def buy_folder_cb(call):
         f"💰 **Amount:** ₹{f_price}\n"
         f"📌 **UPI ID:** `{upi_id}` *(Tap to copy)*\n\n"
         f"🚨 **IMPORTANT STEP:** 🚨\n"
-        f"👉 **Payment karke niche [ 📸 Upload Screenshot ] button dabayein aur Screenshot bhejein!**"
+        f"👉 **Payment karke [ 📸 Upload Screenshot ] button dabayein aur Screenshot bhejein!**"
     )
 
     qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&bgcolor=ffffff&color=000000&data={urllib.parse.quote(upi_url)}"
@@ -365,7 +370,7 @@ def paid_folder_prompt(call):
     bot.send_message(call.message.chat.id, text, reply_markup=inline, parse_mode="Markdown")
 
 
-# ================= RE-FETCH PASS HANDLER (FOLDER PASS = 15 MINS TIMER) =================
+# ================= RE-FETCH PASS HANDLER =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("refetch_pass_"))
 def refetch_pass_cb(call):
     user_id = call.from_user.id
@@ -375,9 +380,9 @@ def refetch_pass_cb(call):
         bot.answer_callback_query(call.id, f"❌ Active pass nahi hai!", show_alert=True)
         return
 
-    vids = get_videos(folder)
+    vids = get_videos(folder) or []
     if not vids:
-        bot.send_message(call.message.chat.id, f"❌ Folder '{folder}' khali hai.")
+        bot.send_message(call.message.chat.id, f"❌ Folder `{folder}` khali hai.")
         return
 
     sent_ids = []
@@ -622,8 +627,9 @@ def requests_cmd(msg):
         bot.send_photo(
             msg.chat.id,
             d["file_id"],
-            caption=f"📩 PAYMENT REQUEST\n\n👤 User: {uid}\n📂 Plan: {ptype}\n💰 Price: ₹{f_price}",
-            reply_markup=kb
+            caption=f"📩 PAYMENT REQUEST\n\n👤 User: `{uid}`\n📂 Plan: `{ptype}`\n💰 Price: ₹{f_price}",
+            reply_markup=kb,
+            parse_mode="Markdown"
         )
 
 
@@ -637,19 +643,19 @@ def approve(call):
 
     if ptype == "ONLINE_VIP_PLAN":
         add_premium(uid)
-        bot.send_message(uid, "🎉 VIP Online Plan Approved!\n📥 Click 'Download' button below.")
+        bot.send_message(uid, "🎉 **VIP Online Plan Approved!\n📥 Click 'Download' button below.**", parse_mode="Markdown")
     else:
         grant_folder_access(uid, ptype)
 
-        vids = get_videos(ptype)
+        vids = get_videos(ptype) or []
         if not vids:
-            bot.send_message(uid, f"🎉 Approved Pass for {ptype}! But folder is empty.")
+            bot.send_message(uid, f"🎉 Approved Pass for `{ptype}`! But folder is empty.", parse_mode="Markdown")
         else:
-            bot.send_message(uid, f"🎉 Approved Pass for {ptype}!\nSending videos now...")
+            bot.send_message(uid, f"🎉 Approved Pass for `{ptype}`!\nSending videos now...", parse_mode="Markdown")
 
             sent_ids = []
             for v in vids:
-                m = bot.send_video(uid, v["file_id"], protect_content=False, caption=f"📂 Folder: {ptype}\n⚠️ Auto-delete in 15 min.")
+                m = bot.send_video(uid, v["file_id"], protect_content=False, caption=f"📂 Folder: `{ptype}`\n⚠️ Auto-delete in 15 min.", parse_mode="Markdown")
                 sent_ids.append(m.message_id)
 
             set_expiry(uid, sent_ids, uid, time.time() + 900)
@@ -659,9 +665,9 @@ def approve(call):
                 telebot.types.InlineKeyboardButton("🔄 Re-fetch Videos", callback_data=f"refetch_pass_{ptype}"),
                 telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
             )
-            bot.send_message(uid, f"⏳ 15 Minutes Timer Started for {ptype}!", reply_markup=inline)
+            bot.send_message(uid, f"⏳ 15 Minutes Timer Started for `{ptype}`!", reply_markup=inline, parse_mode="Markdown")
 
-    bot.send_message(call.message.chat.id, f"✅ Approved user {uid} for {ptype}!")
+    bot.send_message(call.message.chat.id, f"✅ Approved user {uid} for `{ptype}`!", parse_mode="Markdown")
 
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("rej_"))
@@ -690,13 +696,14 @@ def setfolder(msg):
 
 @bot.message_handler(commands=['folders'])
 def showfolders(msg):
-    data = get_folders()
+    data = get_folders() or []
     text = "📂 Folders:\n\n"
     for f in data:
         f_price = get_config(f"folder_price_{f}") or "49"
-        count = len(get_videos(f))
-        text += f"👉 {f} ({count} vids) - Pass: ₹{f_price}\n"
-    bot.send_message(msg.chat.id, text)
+        vids = get_videos(f) or []
+        count = len(vids)
+        text += f"👉 `{f}` ({count} vids) - Pass: ₹{f_price}\n"
+    bot.send_message(msg.chat.id, text, parse_mode="Markdown")
 
 
 @bot.message_handler(commands=['delfolder'])
@@ -741,7 +748,7 @@ def download(msg):
     temp_access[user_id] = True
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    folders = get_folders()
+    folders = get_folders() or []
 
     if not folders:
         bot.send_message(msg.chat.id, "❌ No folders")
@@ -753,7 +760,7 @@ def download(msg):
     bot.send_message(msg.chat.id, "⏳ Select folder (auto delete in 25 min):", reply_markup=kb)
 
 
-# ================= OPEN FOLDER (MAIN DOWNLOAD = 25 MINS TIMER) =================
+# ================= OPEN FOLDER =================
 @bot.message_handler(func=lambda m: m.text.startswith("📂 "))
 def open_folder(msg):
     user_id = msg.from_user.id
@@ -764,7 +771,7 @@ def open_folder(msg):
         return
 
     folder = msg.text.replace("📂 ", "").strip()
-    vids = get_videos(folder)
+    vids = get_videos(folder) or []
 
     if not vids:
         bot.send_message(msg.chat.id, "❌ No videos")
