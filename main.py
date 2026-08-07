@@ -299,15 +299,15 @@ def view_folder_cb(call):
 
         if is_unlocked:
             inline.add(telebot.types.InlineKeyboardButton(f"📥 Download & Share {folder}", callback_data=f"refetch_pass_{folder}"))
-            status_info = "✅ **Is folder ka Full Access Pass Unlocked hai!**"
+            status_info = f"✅ **Is folder ka Full Access Pass Unlocked hai!**\n🎬 **Available Videos:** `{vids_count}`"
         else:
             inline.add(telebot.types.InlineKeyboardButton(f"💳 Buy Folder Pass (₹{f_price})", callback_data=f"buy_folder_{folder}"))
-            status_info = f"🔒 **Status:** Locked\n💰 **Pass Price:** ₹{f_price}"
+            status_info = f"🔒 **Status:** Locked\n💰 **Pass Price:** ₹{f_price}\n🎬 **Total Videos:** `{vids_count}`"
 
         inline.add(telebot.types.InlineKeyboardButton("🔙 Back to Folders", callback_data="folder_pass_menu"))
         inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
 
-        text = f"📂 **FOLDER:** `{folder}`\n🎬 **Total Videos:** `{vids_count}`\n\n{status_info}"
+        text = f"📂 **FOLDER:** `{folder}`\n\n{status_info}"
 
     try:
         bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=inline, parse_mode="Markdown")
@@ -374,10 +374,11 @@ def paid_folder_prompt(call):
     bot.send_message(call.message.chat.id, text, reply_markup=inline, parse_mode="Markdown")
 
 
-# ================= RE-FETCH / SHARE FOLDER =================
+# ================= RE-FETCH / SHARE FOLDER (SAFE CALLBACK FIX) =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("refetch_pass_"))
 def refetch_pass_cb(call):
     user_id = call.from_user.id
+    # Fixed string replacement so underscore folder names like ig_vids don't split incorrectly
     folder = call.data.replace("refetch_pass_", "").strip()
 
     is_unlocked = is_admin(user_id) or has_folder_access_db(user_id, folder)
@@ -403,7 +404,7 @@ def refetch_pass_cb(call):
         telebot.types.InlineKeyboardButton("🔄 Re-fetch Videos", callback_data=f"refetch_pass_{folder}"),
         telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
     )
-    bot.send_message(call.message.chat.id, f"⏳ 15 Minutes Timer Started for `{folder}`!", reply_markup=inline, parse_mode="Markdown")
+    bot.send_message(call.message.chat.id, f"⏳ 15 Minutes Timer Started for `{folder}` ({len(vids)} videos sent)!", reply_markup=inline, parse_mode="Markdown")
 
 
 # ================= CHANNEL AUTO SAVE =================
@@ -645,9 +646,11 @@ def requests_cmd(msg):
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("apv_"))
 def approve(call):
-    parts = call.data.split("_")
-    uid = int(parts[1])
-    ptype = parts[2] if len(parts) > 2 else "ONLINE_VIP_PLAN"
+    # Safe splitting to keep underscores intact in folder names like ig_vids
+    raw_data = call.data.replace("apv_", "")
+    parts = raw_data.split("_", 1)
+    uid = int(parts[0])
+    ptype = parts[1] if len(parts) > 1 else "ONLINE_VIP_PLAN"
 
     remove_pending(uid)
 
@@ -662,8 +665,10 @@ def approve(call):
         inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
     else:
         grant_folder_access_db(uid, ptype)
+        vids_count = count_videos(ptype)
         user_msg = (
             f"🎉 **FOLDER PASS APPROVED FOR `{ptype}`!** 🎉\n\n"
+            f"🎬 **Available Videos:** `{vids_count}`\n"
             f"📂 You can now download and share videos of this folder from **Folder Passes** menu!"
         )
         inline.add(telebot.types.InlineKeyboardButton(f"📂 Open Folder {ptype}", callback_data=f"view_folder_{ptype}"))
@@ -679,8 +684,8 @@ def approve(call):
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("rej_"))
 def reject(call):
-    parts = call.data.split("_")
-    uid = int(parts[1])
+    raw_data = c.data.replace("rej_", "")
+    uid = int(raw_data.split("_")[0])
     remove_pending(uid)
     
     try:
