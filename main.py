@@ -3,7 +3,7 @@ import random
 import threading
 import time
 import urllib.parse
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 import requests
 import telebot
 
@@ -46,22 +46,22 @@ def has_folder_access(user_id, folder_name):
     )
 
 
-# ================= ROYAL STANDEE GENERATOR (RAILWAY SAFE & COMPACT) =================
+# ================= STANDEE GENERATOR =================
 def create_custom_qr_standee(upi_url, price_text):
     width, height = 450, 700
     img = Image.new("RGB", (width, height), color="#FFFFFF")
     draw = ImageDraw.Draw(img)
 
-    # 1. Outer Frame
+    # Outer Frame
     draw.rectangle([15, 15, width - 15, height - 15], outline="#D4AF37", width=4)
     draw.rectangle([22, 22, width - 22, height - 22], outline="#F3E5AB", width=2)
 
-    # 2. Header Branding
+    # Header Branding
     draw.text((width // 2, 55), "👑", fill="#D4AF37", anchor="mm")
     draw.text((width // 2, 100), "DENZEL PREMIUM", fill="#000000", anchor="mm")
     draw.text((width // 2, 140), f"Pay Rs.{price_text} Here", fill="#D4AF37", anchor="mm")
 
-    # 3. Compact QR Code Fetch
+    # Compact QR Code Fetch
     qr_api = (
         f"https://api.qrserver.com/v1/create-qr-code/?"
         f"size=200x200&margin=12&bgcolor=ffffff&color=000000&"
@@ -75,7 +75,7 @@ def create_custom_qr_standee(upi_url, price_text):
 
     draw.rectangle([qr_x - 6, qr_y - 6, qr_x + 200 + 6, qr_y + 200 + 6], outline="#D4AF37", width=3)
 
-    # 4. Footer & Stand Base
+    # Footer & Stand Base
     draw.text((width // 2, 440), "Scan & Pay for VIP Access", fill="#333333", anchor="mm")
     draw.rectangle([50, 490, width - 50, 508], fill="#D4AF37")
     draw.rectangle([75, 508, width - 75, 518], fill="#AA7C11")
@@ -94,14 +94,15 @@ def expiry_worker():
             now = time.time()
             expired = get_expired(now)
 
-            for item in expired:
-                chat_id = item["chat_id"]
-                for mid in item["message_ids"]:
-                    try:
-                        bot.delete_message(chat_id, mid)
-                    except Exception:
-                        pass
-                delete_expiry(item["_id"])
+            if expired:
+                for item in expired:
+                    chat_id = item["chat_id"]
+                    for mid in item["message_ids"]:
+                        try:
+                            bot.delete_message(chat_id, mid)
+                        except Exception:
+                            pass
+                    delete_expiry(item["_id"])
 
         except Exception as e:
             print("Expiry error:", e)
@@ -115,41 +116,44 @@ threading.Thread(target=expiry_worker, daemon=True).start()
 # ================= START =================
 @bot.message_handler(commands=["start"])
 def start(msg):
-    track_user(msg.from_user.id)
+    try:
+        track_user(msg.from_user.id)
 
-    text = get_config("start_text") or "👋 Welcome to Premium Bot"
-    price = get_config("price") or "29"
-    start_image = get_config("start_image")
+        text = get_config("start_text") or "👋 Welcome to Premium Bot"
+        price = get_config("price") or "29"
+        start_image = get_config("start_image")
 
-    kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("📥 Download")
+        kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        kb.add("📥 Download")
 
-    inline = telebot.types.InlineKeyboardMarkup(row_width=1)
-    inline.add(
-        telebot.types.InlineKeyboardButton("💎 Buy Premium", callback_data="generate_qr"),
-        telebot.types.InlineKeyboardButton("👁️ Demo", callback_data="show_demo"),
-        telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid_main"),
-        telebot.types.InlineKeyboardButton("📂 Folder Passes", callback_data="folder_pass_menu"),
-    )
+        inline = telebot.types.InlineKeyboardMarkup(row_width=1)
+        inline.add(
+            telebot.types.InlineKeyboardButton("💎 Buy Premium", callback_data="generate_qr"),
+            telebot.types.InlineKeyboardButton("👁️ Demo", callback_data="show_demo"),
+            telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid_main"),
+            telebot.types.InlineKeyboardButton("📂 Folder Passes", callback_data="folder_pass_menu"),
+        )
 
-    caption_full = (
-        f"**{text}**\n\n"
-        f"💰 **Online Watch Premium: ₹{price}**\n\n"
-        f"👇 **Niche Diye Gaye Buttons Ka Use Karein:**"
-    )
+        caption_full = (
+            f"**{text}**\n\n"
+            f"💰 **Online Watch Premium: ₹{price}**\n\n"
+            f"👇 **Niche Diye Gaye Buttons Ka Use Karein:**"
+        )
 
-    if start_image:
-        try:
-            bot.send_photo(msg.chat.id, photo=start_image, caption=caption_full, reply_markup=kb, parse_mode="Markdown")
-        except Exception:
+        if start_image:
+            try:
+                bot.send_photo(msg.chat.id, photo=start_image, caption=caption_full, reply_markup=kb, parse_mode="Markdown")
+            except Exception:
+                bot.send_message(msg.chat.id, caption_full, reply_markup=kb, parse_mode="Markdown")
+        else:
             bot.send_message(msg.chat.id, caption_full, reply_markup=kb, parse_mode="Markdown")
-    else:
-        bot.send_message(msg.chat.id, caption_full, reply_markup=kb, parse_mode="Markdown")
 
-    bot.send_message(msg.chat.id, "👇 **Select option below:**", reply_markup=inline, parse_mode="Markdown")
+        bot.send_message(msg.chat.id, "👇 **Select option below:**", reply_markup=inline, parse_mode="Markdown")
+    except Exception as e:
+        print("Start Error:", e)
 
 
-# ================= BUY PREMIUM (VIP PLAN STANDEE QR) =================
+# ================= BUY PREMIUM =================
 @bot.callback_query_handler(func=lambda call: call.data == "generate_qr")
 def generate_qr_handler(call):
     try:
@@ -390,45 +394,49 @@ def auto_save_channel(msg):
     print(f"Saved in folder: {channel_folder}")
 
 
-# ================= ADMIN PANEL (FIXED DATA-TYPE COMPARISON) =================
+# ================= ADMIN PANEL (FAIL-SAFE LOGIC) =================
 @bot.message_handler(commands=["admin"])
 def admin(msg):
-    # User ID aur ADMIN_ID dono ko strict string banakar strip karte hain taaki extra space ya quotes se issue na aaye
-    user_id_str = str(msg.from_user.id).strip()
-    admin_id_str = str(ADMIN_ID).strip()
+    try:
+        user_id_str = str(msg.from_user.id).strip()
+        admin_id_str = str(ADMIN_ID).strip()
 
-    if user_id_str != admin_id_str:
-        bot.send_message(msg.chat.id, "❌ **Not allowed**", parse_mode="Markdown")
-        return
+        if user_id_str != admin_id_str:
+            bot.send_message(
+                msg.chat.id,
+                f"❌ **Not allowed**\n\n👤 **Your ID:** `{msg.from_user.id}`\n📌 **Config Admin ID:** `{ADMIN_ID}`",
+                parse_mode="Markdown"
+            )
+            return
 
-    text = (
-        "🛠 **ADMIN PANEL**\n\n"
-        "⚙️ **SETTINGS:**\n"
-        "✏️ /setstart TEXT\n"
-        "🖼 /setimage (Set Banner Photo)\n"
-        "🎬 /setdemo (Set Demo Video)\n"
-        "💰 /setprice PRICE\n"
-        "📂 /setfolderprice FOLDER_NAME PRICE\n"
-        "📝 /setpasstext YOUR_CUSTOM_TEXT\n"
-        "💳 /setupi YOUR_UPI_ID\n\n"
-        "💳 /requests\n"
-        "📢 /broadcast MESSAGE\n"
-        "📊 /stats\n\n"
-        "📂 /setfolder NAME\n"
-        "📁 /folders\n"
-        "🗑 /delfolder NAME\n"
-        "❌ /delvideo INDEX\n"
-    )
+        text = (
+            "🛠 **ADMIN PANEL**\n\n"
+            "⚙️ **SETTINGS:**\n"
+            "✏️ /setstart TEXT\n"
+            "🖼 /setimage (Set Banner Photo)\n"
+            "🎬 /setdemo (Set Demo Video)\n"
+            "💰 /setprice PRICE\n"
+            "📂 /setfolderprice FOLDER_NAME PRICE\n"
+            "📝 /setpasstext YOUR_CUSTOM_TEXT\n"
+            "💳 /setupi YOUR_UPI_ID\n\n"
+            "💳 /requests\n"
+            "📢 /broadcast MESSAGE\n"
+            "📊 /stats\n\n"
+            "📂 /setfolder NAME\n"
+            "📁 /folders\n"
+            "🗑 /delfolder NAME\n"
+            "❌ /delvideo INDEX\n"
+        )
 
-    bot.send_message(msg.chat.id, text, parse_mode="Markdown")
+        bot.send_message(msg.chat.id, text, parse_mode="Markdown")
+    except Exception as e:
+        bot.send_message(msg.chat.id, f"⚠️ Admin Panel Error: {e}")
 
 
 # ================= SET FOLDER PRICE & PASS TEXT =================
 @bot.message_handler(commands=["setfolderprice"])
 def setfolderprice(msg):
-    user_id_str = str(msg.from_user.id).strip()
-    admin_id_str = str(ADMIN_ID).strip()
-    if user_id_str != admin_id_str:
+    if str(msg.from_user.id).strip() != str(ADMIN_ID).strip():
         return
 
     parts = msg.text.split(" ", 2)
@@ -443,9 +451,7 @@ def setfolderprice(msg):
 
 @bot.message_handler(commands=["setpasstext"])
 def setpasstext(msg):
-    user_id_str = str(msg.from_user.id).strip()
-    admin_id_str = str(ADMIN_ID).strip()
-    if user_id_str != admin_id_str:
+    if str(msg.from_user.id).strip() != str(ADMIN_ID).strip():
         return
 
     new_text = msg.text.replace("/setpasstext", "").strip()
@@ -509,9 +515,7 @@ def handle_media(msg):
 # ================= REQUESTS APPROVAL =================
 @bot.message_handler(commands=["requests"])
 def requests(msg):
-    user_id_str = str(msg.from_user.id).strip()
-    admin_id_str = str(ADMIN_ID).strip()
-    if user_id_str != admin_id_str:
+    if str(msg.from_user.id).strip() != str(ADMIN_ID).strip():
         return
 
     for d in get_pending():
@@ -577,27 +581,21 @@ def reject(call):
 # ================= OTHER ADMIN COMMANDS =================
 @bot.message_handler(commands=["setdemo"])
 def setdemo_cmd(msg):
-    user_id_str = str(msg.from_user.id).strip()
-    admin_id_str = str(ADMIN_ID).strip()
-    if user_id_str == admin_id_str:
+    if str(msg.from_user.id).strip() == str(ADMIN_ID).strip():
         admin_states[msg.from_user.id] = "awaiting_demo_content"
         bot.reply_to(msg, "🎬 **Abhi Demo Video/Photo text ke saath bhejo:**", parse_mode="Markdown")
 
 
 @bot.message_handler(commands=["setimage"])
 def setimage_cmd(msg):
-    user_id_str = str(msg.from_user.id).strip()
-    admin_id_str = str(ADMIN_ID).strip()
-    if user_id_str == admin_id_str:
+    if str(msg.from_user.id).strip() == str(ADMIN_ID).strip():
         admin_states[msg.from_user.id] = "awaiting_start_image"
         bot.reply_to(msg, "📸 **Abhi start banner image bhejo:**", parse_mode="Markdown")
 
 
 @bot.message_handler(commands=["setupi"])
 def setupi(msg):
-    user_id_str = str(msg.from_user.id).strip()
-    admin_id_str = str(ADMIN_ID).strip()
-    if user_id_str == admin_id_str:
+    if str(msg.from_user.id).strip() == str(ADMIN_ID).strip():
         parts = msg.text.split(" ", 1)
         if len(parts) >= 2:
             set_config("upi_id", parts[1].strip())
@@ -606,9 +604,7 @@ def setupi(msg):
 
 @bot.message_handler(commands=["broadcast"])
 def broadcast_msg(msg):
-    user_id_str = str(msg.from_user.id).strip()
-    admin_id_str = str(ADMIN_ID).strip()
-    if user_id_str == admin_id_str:
+    if str(msg.from_user.id).strip() == str(ADMIN_ID).strip():
         text = msg.text.replace("/broadcast", "").strip()
         if text:
             db_users = get_all_users() or []
@@ -624,9 +620,7 @@ def broadcast_msg(msg):
 
 @bot.message_handler(commands=["stats"])
 def stats(msg):
-    user_id_str = str(msg.from_user.id).strip()
-    admin_id_str = str(ADMIN_ID).strip()
-    if user_id_str == admin_id_str:
+    if str(msg.from_user.id).strip() == str(ADMIN_ID).strip():
         db_users = get_all_users() or []
         users_count = len(set(list(db_users) + list(all_user_ids)))
         bot.send_message(msg.chat.id, f"📊 **BOT STATS**\n\n👥 **Total Users:** {users_count}\n📂 **Folders:** {len(get_folders())}", parse_mode="Markdown")
@@ -634,9 +628,7 @@ def stats(msg):
 
 @bot.message_handler(commands=["setfolder"])
 def setfolder(msg):
-    user_id_str = str(msg.from_user.id).strip()
-    admin_id_str = str(ADMIN_ID).strip()
-    if user_id_str == admin_id_str:
+    if str(msg.from_user.id).strip() == str(ADMIN_ID).strip():
         name = msg.text.replace("/setfolder", "").strip()
         current_folder[msg.from_user.id] = name
         bot.reply_to(msg, f"📂 **Active folder: {name}**", parse_mode="Markdown")
@@ -655,9 +647,7 @@ def showfolders(msg):
 
 @bot.message_handler(commands=["delfolder"])
 def delfolder(msg):
-    user_id_str = str(msg.from_user.id).strip()
-    admin_id_str = str(ADMIN_ID).strip()
-    if user_id_str == admin_id_str:
+    if str(msg.from_user.id).strip() == str(ADMIN_ID).strip():
         name = msg.text.replace("/delfolder", "").strip()
         delete_folder(name)
         bot.reply_to(msg, f"🗑 **Deleted folder: {name}**", parse_mode="Markdown")
@@ -665,9 +655,7 @@ def delfolder(msg):
 
 @bot.message_handler(commands=["delvideo"])
 def delvideo(msg):
-    user_id_str = str(msg.from_user.id).strip()
-    admin_id_str = str(ADMIN_ID).strip()
-    if user_id_str == admin_id_str:
+    if str(msg.from_user.id).strip() == str(ADMIN_ID).strip():
         parts = msg.text.split(" ")
         if len(parts) >= 2:
             index = int(parts[1])
