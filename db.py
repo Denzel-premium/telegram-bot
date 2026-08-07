@@ -1,96 +1,109 @@
 import os
 from pymongo import MongoClient
 
-# Safe MONGO_URL import
-try:
-    from config import MONGO_URL
-except ImportError:
-    MONGO_URL = os.getenv("MONGO_URL") or os.getenv("MONGO_URI")
+# ================= MONGO SETUP =================
+MONGO_URL = os.getenv("MONGO_URL")
+
+if not MONGO_URL:
+    raise Exception("❌ MONGO_URL not set in Railway ENV")
 
 client = MongoClient(MONGO_URL)
 
-# Default DB Fallback (Purani database se exact connect hone ke liye)
-try:
-    db = client.get_default_database()
-except Exception:
-    db = client["telegram_bot_db"]
+db = client["bot_db"]
 
-# Collections
-users_col = db["users"]
-videos_col = db["videos"]
-config_col = db["config"]
-pending_col = db["pending"]
-expiry_col = db["expiry"]
+users = db["users"]
+videos = db["videos"]
+config = db["config"]
+pending = db["pending"]
 
-# CONFIG
-def get_config(key):
-    doc = config_col.find_one({"key": str(key).strip()})
-    return doc["value"] if doc else None
+# ✅ EXPIRY COLLECTION
+exp = db["expiry"]
 
+
+# ================= CONFIG =================
 def set_config(key, value):
-    config_col.update_one({"key": str(key).strip()}, {"$set": {"value": value}}, upsert=True)
+    config.update_one({"key": key}, {"$set": {"value": value}}, upsert=True)
 
-# USERS
-def add_user(user_id):
-    users_col.update_one({"user_id": int(user_id)}, {"$set": {"user_id": int(user_id)}}, upsert=True)
+def get_config(key):
+    data = config.find_one({"key": key})
+    return data["value"] if data else None
 
-def get_all_users():
-    return [u["user_id"] for u in users_col.find()]
 
+# ================= USERS =================
 def add_premium(user_id):
-    users_col.update_one({"user_id": int(user_id)}, {"$set": {"premium": True}}, upsert=True)
+    users.update_one(
+        {"user_id": user_id},
+        {"$set": {"premium": True}},
+        upsert=True
+    )
 
 def is_premium(user_id):
-    u = users_col.find_one({"user_id": int(user_id)})
-    return bool(u and u.get("premium"))
+    user = users.find_one({"user_id": user_id})
+    return user and user.get("premium")
 
-# PENDING REQUESTS
+
+# ================= PENDING =================
 def add_pending(user_id, file_id):
-    pending_col.update_one({"user_id": int(user_id)}, {"$set": {"file_id": file_id}}, upsert=True)
+    pending.insert_one({"user_id": user_id, "file_id": file_id})
 
 def get_pending():
-    return list(pending_col.find())
+    return list(pending.find())
 
 def remove_pending(user_id):
-    pending_col.delete_many({"user_id": int(user_id)})
+    pending.delete_many({"user_id": user_id})
 
-# VIDEOS & FOLDERS (SAFE MATCHING)
+
+# ================= VIDEOS =================
 def add_video(folder, file_id):
-    clean_folder = str(folder).strip()
-    videos_col.insert_one({"folder": clean_folder, "file_id": file_id})
-
-def get_videos(folder):
-    clean_folder = str(folder).strip()
-    # Direct match check pehle, fir case-insensitive fallback
-    vids = list(videos_col.find({"folder": clean_folder}))
-    if not vids:
-        vids = list(videos_col.find({"folder": {"$regex": f"^{clean_folder}$", "$options": "i"}}))
-    return vids
+    if not videos.find_one({"file_id": file_id}):
+        videos.insert_one({
+            "folder": folder,
+            "file_id": file_id
+        })
 
 def get_folders():
-    folders = videos_col.distinct("folder")
-    return [str(f).strip() for f in folders if f and str(f).strip()]
+    return videos.distinct("folder")
 
-def delete_folder(folder):
-    clean_folder = str(folder).strip()
-    videos_col.delete_many({"folder": clean_folder})
+def get_videos(folder):
+    return list(videos.find({"folder": folder}).sort("_id", -1))
+
+def delete_folder(name):
+    videos.delete_many({"folder": name})
 
 def delete_video(folder, index):
-    vids = get_videos(folder)
-    if 0 <= index < len(vids):
-        videos_col.delete_one({"_id": vids[index]["_id"]})
+    data = list(videos.find({"folder": folder}).sort("_id", -1))
+    if 0 <= index < len(data):
+        videos.delete_one({"_id": data[index]["_id"]})
 
-# EXPIRY SYSTEM
-def set_expiry(user_id, message_ids, chat_id, expiry_time):
-    expiry_col.insert_one({
-        "user_id": int(user_id),
-        "message_ids": message_ids,
+
+def rename_folder(old_name, new_name):
+    videos.update_many(
+        {"folder": old_name},
+        {"$set": {"folder": new_name}}
+    )
+
+
+def search_video(keyword):
+    return list(videos.find({"file_id": {"$regex": keyword}}))
+
+def count_videos(folder):
+    return videos.count_documents({"folder": folder})
+
+
+# ================= EXPIRY SYSTEM =================
+def set_expiry(user_id, message_ids, chat_id, expire_at):
+    exp.insert_one({
+        "user_id": user_id,
+        "message_ids": list(message_ids),  # ✅ SAFE COPY FIX
         "chat_id": chat_id,
-        "expiry_time": expiry_time
+        "expire_at": expire_at
     })
 
-def get_expired(now):
-    return list(expiry_col.find({"expiry_time": {"$lte": now}}))
 
+def get_expired(now):
+    return list(exp.find({"expire_at": {"$lte": now}}))
+
+
+# ❗ MAIN FIX HERE
 def delete_expiry(_id):
-    expiry_col.delete_one({"_id": _id})
+    exp.delete_one({"_id": _id})
