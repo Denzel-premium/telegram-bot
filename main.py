@@ -192,13 +192,13 @@ def paid_main_handler(call):
     bot.send_message(call.message.chat.id, "📸 Payment hone ke baad yahan Screenshot bhejo")
 
 
-# ================= FOLDER PASSES MENU =================
+# ================= FOLDER PASSES MENU (IN-PLACE EDIT FIX) =================
 @bot.callback_query_handler(func=lambda call: call.data == "folder_pass_menu")
 def folder_pass_menu(call):
     user_id = call.from_user.id
     folders = get_folders()
     if not folders:
-        bot.send_message(call.message.chat.id, "❌ No folders available")
+        bot.answer_callback_query(call.id, "❌ No folders available", show_alert=True)
         return
 
     default_text = "📁 PER-FOLDER ACCESS PASS\n\nNiche se apna Folder Select karke Pass Buy karein:"
@@ -210,10 +210,13 @@ def folder_pass_menu(call):
         status_text = " ✅" if has_folder_access(user_id, f) else f" • ₹{f_price}"
         inline.add(telebot.types.InlineKeyboardButton(f"📂 {f}{status_text}", callback_data=f"view_folder_{f}"))
 
-    bot.send_message(call.message.chat.id, pass_instruction, reply_markup=inline)
+    try:
+        bot.edit_message_text(pass_instruction, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=inline)
+    except Exception:
+        bot.send_message(call.message.chat.id, pass_instruction, reply_markup=inline)
 
 
-# ================= VIEW FOLDER DETAILS =================
+# ================= VIEW FOLDER DETAILS (IN-PLACE EDIT FIX) =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("view_folder_"))
 def view_folder_cb(call):
     user_id = call.from_user.id
@@ -225,16 +228,19 @@ def view_folder_cb(call):
 
     if has_folder_access(user_id, folder):
         inline.add(telebot.types.InlineKeyboardButton(f"🔄 Re-fetch {folder}", callback_data=f"refetch_pass_{folder}"))
+        inline.add(telebot.types.InlineKeyboardButton("🔙 Back to Folders", callback_data="folder_pass_menu"))
         status_info = "✅ Aapke paas is folder ka Approved Pass hai!"
     else:
         inline.add(telebot.types.InlineKeyboardButton("💎 Buy Pass", callback_data=f"buy_folder_{folder}"))
+        inline.add(telebot.types.InlineKeyboardButton("🔙 Back to Folders", callback_data="folder_pass_menu"))
         status_info = f"💰 Pass Price: ₹{f_price}"
 
-    bot.send_message(
-        call.message.chat.id,
-        f"📂 FOLDER: {folder}\n🎬 Total Videos: {vids_count}\n\n{status_info}",
-        reply_markup=inline
-    )
+    text = f"📂 FOLDER: {folder}\n🎬 Total Videos: {vids_count}\n\n{status_info}"
+
+    try:
+        bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=inline)
+    except Exception:
+        bot.send_message(call.message.chat.id, text, reply_markup=inline)
 
 
 # ================= GENERATE QR FOR SPECIFIC FOLDER =================
@@ -273,7 +279,7 @@ def paid_folder_prompt(call):
     bot.send_message(call.message.chat.id, f"📸 Payment ka Screenshot bhejein (Folder: {folder}):")
 
 
-# ================= RE-FETCH PASS HANDLER =================
+# ================= RE-FETCH PASS HANDLER (FOLDER PASS = 15 MINS TIMER) =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("refetch_pass_"))
 def refetch_pass_cb(call):
     user_id = call.from_user.id
@@ -293,6 +299,7 @@ def refetch_pass_cb(call):
         m = bot.send_video(call.message.chat.id, v["file_id"], protect_content=False, caption="⚠️ Auto-delete in 15 minutes!")
         sent_ids.append(m.message_id)
 
+    # ⏱️ FOLDER PASS TIMER = 15 MINUTES (900 seconds)
     set_expiry(user_id, sent_ids, call.message.chat.id, time.time() + 900)
 
     inline = telebot.types.InlineKeyboardMarkup()
@@ -419,7 +426,7 @@ def setimage_cmd(msg):
         bot.reply_to(msg, "📸 Abhi start banner image bhejo:")
 
 
-# ================= BROADCAST & STATS (FIXED CRASH) =================
+# ================= BROADCAST & STATS =================
 @bot.message_handler(commands=['broadcast'])
 def broadcast_msg(msg):
     if is_admin(msg.from_user.id):
@@ -631,7 +638,7 @@ def delvideo(msg):
     bot.reply_to(msg, "❌ Video deleted")
 
 
-# ================= DOWNLOAD =================
+# ================= DOWNLOAD (MAIN DOWNLOAD PLAN = 25 MINS TIMER) =================
 @bot.message_handler(func=lambda m: m.text == "📥 Download")
 def download(msg):
     track_user(msg.from_user.id)
@@ -652,10 +659,10 @@ def download(msg):
     for f in folders:
         kb.add(f"📂 {f}")
 
-    bot.send_message(msg.chat.id, "⏳ Select folder (auto delete in 15 min):", reply_markup=kb)
+    bot.send_message(msg.chat.id, "⏳ Select folder (auto delete in 25 min):", reply_markup=kb)
 
 
-# ================= OPEN FOLDER =================
+# ================= OPEN FOLDER (MAIN DOWNLOAD = 25 MINS TIMER) =================
 @bot.message_handler(func=lambda m: m.text.startswith("📂 "))
 def open_folder(msg):
     user_id = msg.from_user.id
@@ -674,14 +681,15 @@ def open_folder(msg):
 
     sent_videos[user_id] = []
     for v in vids:
-        m = bot.send_video(msg.chat.id, v["file_id"], protect_content=True)
+        m = bot.send_video(msg.chat.id, v["file_id"], protect_content=True, caption="⚠️ Auto-delete in 25 minutes!")
         sent_videos[user_id].append(m.message_id)
 
+    # ⏱️ MAIN VIP PLAN DOWNLOAD TIMER = 25 MINUTES (1500 seconds)
     set_expiry(
         user_id,
         sent_videos[user_id],
         msg.chat.id,
-        time.time() + 900
+        time.time() + 1500
     )
 
 
