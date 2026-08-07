@@ -38,15 +38,15 @@ def track_user(user_id):
 
 # ================= MAIN MENU BUILDER =================
 def build_main_menu():
-    text = get_config("start_text") or "👋 Welcome to Premium Bot"
+    text = get_config("start_text") or "👋 Welcome"
     price = get_config("price") or "29"
 
     inline = telebot.types.InlineKeyboardMarkup(row_width=1)
     inline.add(
-        telebot.types.InlineKeyboardButton(f"👑 Buy All VIP Pass ₹{price}", callback_data="generate_qr"),
+        telebot.types.InlineKeyboardButton(f"💰 Buy Premium ₹{price}", callback_data="generate_qr"),
         telebot.types.InlineKeyboardButton("👁️ Demo", callback_data="show_demo"),
-        telebot.types.InlineKeyboardButton("📸 Upload Screenshot (VIP)", callback_data="paid_main"),
-        telebot.types.InlineKeyboardButton("📂 Single Folder Passes", callback_data="folder_pass_menu"),
+        telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid_main"),
+        telebot.types.InlineKeyboardButton("📂 Folder Passes", callback_data="folder_pass_menu"),
     )
     return text, inline
 
@@ -117,7 +117,7 @@ def go_home_handler(call):
     bot.send_message(call.message.chat.id, text, reply_markup=inline, parse_mode="Markdown")
 
 
-# ================= BUY ALL VIP PASS =================
+# ================= BUY PREMIUM =================
 @bot.callback_query_handler(func=lambda call: call.data == "generate_qr")
 def generate_qr_handler(call):
     try:
@@ -133,17 +133,16 @@ def generate_qr_handler(call):
 
     inline = telebot.types.InlineKeyboardMarkup(row_width=1)
     inline.add(
-        telebot.types.InlineKeyboardButton("📸 Upload Screenshot", callback_data="paid_main"),
+        telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid_main"),
         telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
     )
 
     caption_text = (
-        f"👑 **ALL FOLDERS VIP ACCESS PASS** 👑\n\n"
+        f"👑 **BUY PREMIUM ₹{price}** 👑\n\n"
         f"📱 **SCAN & PAY ₹{price}**\n\n"
         f"📌 **UPI ID:** `{upi_id}` *(Tap to copy)*\n"
         f"💰 **Amount:** ₹{price}\n\n"
-        f"🚨 **IMPORTANT STEP:** 🚨\n"
-        f"👉 **Payment karne ke baad [ 📸 Upload Screenshot ] button par click karein aur payment screenshot bhej dein!**"
+        f"👉 Payment karne ke baad [ 💳 I Have Paid ] button par click karke screenshot bhej dein!"
     )
 
     qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&bgcolor=ffffff&color=000000&data={urllib.parse.quote(upi_url)}"
@@ -179,8 +178,9 @@ def show_demo_handler(call):
         return
 
     buy_kb = telebot.types.InlineKeyboardMarkup(row_width=1)
+    price = get_config("price") or "29"
     buy_kb.add(
-        telebot.types.InlineKeyboardButton("💎 Buy VIP Premium", callback_data="generate_qr"),
+        telebot.types.InlineKeyboardButton(f"💰 Buy Premium ₹{price}", callback_data="generate_qr"),
         telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
     )
 
@@ -206,7 +206,7 @@ def show_demo_handler(call):
         set_expiry(user_id, sent_demo_ids, chat_id, time.time() + 600)
 
 
-# ================= UPLOAD PROMPT =================
+# ================= I HAVE PAID BUTTON =================
 @bot.callback_query_handler(func=lambda call: call.data == "paid_main")
 def paid_main_handler(call):
     try:
@@ -220,9 +220,8 @@ def paid_main_handler(call):
     inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
 
     text = (
-        f"📸 **VIP PLAN PAYMENT SCREENSHOT BHEJEIN** 📸\n\n"
-        f"👉 **Aapne VIP Access Plan ka jo payment kiya hai, uska Screenshot abhi bhej dein!**\n\n"
-        f"⚡ *Admin verify karte hi aapko Instant VIP Access de dega.*"
+        f"📸 **PAYMENT SCREENSHOT BHEJEIN** 📸\n\n"
+        f"👉 Payment ka Screenshot abhi chat me bhej dein! Admin verify karke access de dega."
     )
 
     try:
@@ -242,7 +241,7 @@ def folder_pass_menu(call):
         bot.answer_callback_query(call.id, "❌ No folders available", show_alert=True)
         return
 
-    default_text = "📁 **PER-FOLDER ACCESS PASS**\n\nNiche se apna required folder select karke pass buy karein:"
+    default_text = "📁 **FOLDER PASSES**\n\nNiche se folder select karke pass buy karein:"
     pass_instruction = get_config("pass_text") or default_text
 
     inline = telebot.types.InlineKeyboardMarkup(row_width=1)
@@ -251,7 +250,7 @@ def folder_pass_menu(call):
         vids = get_videos(f) or []
         v_count = len(vids)
         
-        is_unlocked = is_premium(user_id) or has_folder_access_db(user_id, f)
+        is_unlocked = has_folder_access_db(user_id, f)
 
         if is_unlocked:
             status_text = " ✅ Unlocked"
@@ -293,16 +292,16 @@ def view_folder_cb(call):
             f"📂 **Folder:** `{folder}`\n"
             f"🎬 **Total Videos:** `{vids_count}`\n"
             f"💰 **Current Price:** ₹{f_price}\n\n"
-            f"✏️ *Price change karne ke liye:*\n`/setfolderprice {folder} PRICE`"
+            f"✏️ *Price badalne ke liye:*\n`/setfolderprice {folder} PRICE`"
         )
     else:
-        is_unlocked = is_premium(user_id) or has_folder_access_db(user_id, folder)
+        is_unlocked = has_folder_access_db(user_id, folder)
 
         if is_unlocked:
-            inline.add(telebot.types.InlineKeyboardButton(f"📥 Get Videos / Share {folder}", callback_data=f"refetch_pass_{folder}"))
-            status_info = "✅ **Aapke paas is folder ka Approved Pass hai!**"
+            inline.add(telebot.types.InlineKeyboardButton(f"📥 Download & Share {folder}", callback_data=f"refetch_pass_{folder}"))
+            status_info = "✅ **Is folder ka Full Access Pass Unlocked hai!**"
         else:
-            inline.add(telebot.types.InlineKeyboardButton(f"💳 Buy Pass (₹{f_price})", callback_data=f"buy_folder_{folder}"))
+            inline.add(telebot.types.InlineKeyboardButton(f"💳 Buy Folder Pass (₹{f_price})", callback_data=f"buy_folder_{folder}"))
             status_info = f"🔒 **Status:** Locked\n💰 **Pass Price:** ₹{f_price}"
 
         inline.add(telebot.types.InlineKeyboardButton("🔙 Back to Folders", callback_data="folder_pass_menu"))
@@ -329,17 +328,16 @@ def buy_folder_cb(call):
 
     inline = telebot.types.InlineKeyboardMarkup(row_width=1)
     inline.add(
-        telebot.types.InlineKeyboardButton("📸 Upload Screenshot", callback_data=f"paid_folder_{folder}"),
+        telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data=f"paid_folder_{folder}"),
         telebot.types.InlineKeyboardButton("🔙 Back to Folders", callback_data="folder_pass_menu"),
         telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
     )
 
     caption_text = (
-        f"📂 **UNLOCK FOLDER:** `{folder}`\n"
+        f"📂 **BUY FOLDER PASS:** `{folder}`\n"
         f"💰 **Amount:** ₹{f_price}\n"
         f"📌 **UPI ID:** `{upi_id}` *(Tap to copy)*\n\n"
-        f"🚨 **IMPORTANT STEP:** 🚨\n"
-        f"👉 **Payment karne ke baad [ 📸 Upload Screenshot ] button dabayein aur Payment Screenshot bhej dein!**"
+        f"👉 Payment karne ke baad [ 💳 I Have Paid ] button dabayein aur Screenshot bhej dein!"
     )
 
     qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&bgcolor=ffffff&color=000000&data={urllib.parse.quote(upi_url)}"
@@ -376,13 +374,13 @@ def paid_folder_prompt(call):
     bot.send_message(call.message.chat.id, text, reply_markup=inline, parse_mode="Markdown")
 
 
-# ================= SEND VIDEOS =================
+# ================= RE-FETCH / SHARE FOLDER =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("refetch_pass_"))
 def refetch_pass_cb(call):
     user_id = call.from_user.id
     folder = call.data.replace("refetch_pass_", "").strip()
 
-    is_unlocked = is_admin(user_id) or is_premium(user_id) or has_folder_access_db(user_id, folder)
+    is_unlocked = is_admin(user_id) or has_folder_access_db(user_id, folder)
 
     if not is_unlocked:
         bot.answer_callback_query(call.id, f"❌ Folder `{folder}` ka pass buy karein!", show_alert=True)
@@ -395,7 +393,7 @@ def refetch_pass_cb(call):
 
     sent_ids = []
     for v in vids:
-        m = bot.send_video(call.message.chat.id, v["file_id"], protect_content=True, caption=f"📂 `{folder}`\n⚠️ Auto-delete in 15 minutes!", parse_mode="Markdown")
+        m = bot.send_video(call.message.chat.id, v["file_id"], protect_content=False, caption=f"📂 `{folder}`\n⚠️ Auto-delete in 15 minutes!", parse_mode="Markdown")
         sent_ids.append(m.message_id)
 
     set_expiry(user_id, sent_ids, call.message.chat.id, time.time() + 900)
@@ -428,7 +426,7 @@ def admin(msg):
         "✏️ /setstart TEXT\n"
         "🖼 /setimage (Set Banner Photo)\n"
         "🎬 /setdemo (Set Demo Video)\n"
-        "💰 /setprice PRICE (All VIP Plan Price)\n"
+        "💰 /setprice PRICE\n"
         "📂 /setfolderprice FOLDER_NAME PRICE\n"
         "📝 /setpasstext YOUR_CUSTOM_TEXT\n"
         "💳 /setupi YOUR_UPI_ID\n\n"
@@ -473,7 +471,7 @@ def setprice(msg):
     parts = msg.text.split(" ", 1)
     if len(parts) > 1:
         set_config("price", parts[1].strip())
-        bot.reply_to(msg, f"✅ All VIP Plan Price set to ₹{parts[1].strip()}")
+        bot.reply_to(msg, f"✅ Main Premium Price set to ₹{parts[1].strip()}")
 
 
 @bot.message_handler(commands=['setupi'])
@@ -639,7 +637,7 @@ def requests_cmd(msg):
         bot.send_photo(
             msg.chat.id,
             d["file_id"],
-            caption=f"📩 PAYMENT REQUEST\n\n👤 User: `{uid}`\n📂 Plan/Folder Name: `{ptype}`\n💰 Price: ₹{f_price}",
+            caption=f"📩 PAYMENT REQUEST\n\n👤 User: `{uid}`\n📂 Request For: `{ptype}`\n💰 Price: ₹{f_price}",
             reply_markup=kb,
             parse_mode="Markdown"
         )
@@ -658,16 +656,15 @@ def approve(call):
     if ptype == "ONLINE_VIP_PLAN":
         add_premium(uid)
         user_msg = (
-            "🎉 **CONGRATULATIONS! ALL VIP PLAN APPROVED!** 🎉\n\n"
-            "📥 Click **'Download'** button below to access all available folders."
+            "🎉 **MAIN PREMIUM APPROVED!** 🎉\n\n"
+            "📥 Click **'Download'** button to view videos (Protected Watch View)."
         )
         inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
     else:
         grant_folder_access_db(uid, ptype)
         user_msg = (
-            f"🎉 **CONGRATULATIONS! FOLDER PASS APPROVED!** 🎉\n\n"
-            f"📂 **Unlocked Folder:** `{ptype}`\n\n"
-            f"👉 Go to **Single Folder Passes** menu or click below to view & receive videos now!"
+            f"🎉 **FOLDER PASS APPROVED FOR `{ptype}`!** 🎉\n\n"
+            f"📂 You can now download and share videos of this folder from **Folder Passes** menu!"
         )
         inline.add(telebot.types.InlineKeyboardButton(f"📂 Open Folder {ptype}", callback_data=f"view_folder_{ptype}"))
         inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
@@ -756,6 +753,10 @@ def delvideo(msg):
 def download(msg):
     track_user(msg.from_user.id)
     
+    if not is_premium(msg.from_user.id):
+        bot.send_message(msg.chat.id, "❌ Main Premium required to watch videos!", parse_mode="Markdown")
+        return
+
     user_id = msg.from_user.id
     temp_access[user_id] = True
 
@@ -769,7 +770,7 @@ def download(msg):
     for f in folders:
         kb.add(f"📂 {f}")
 
-    bot.send_message(msg.chat.id, "⏳ Select folder to download:", reply_markup=kb)
+    bot.send_message(msg.chat.id, "⏳ Select folder to watch videos:", reply_markup=kb)
 
 
 # ================= OPEN FOLDER =================
@@ -780,10 +781,8 @@ def open_folder(msg):
 
     folder = msg.text.replace("📂 ", "").strip()
 
-    is_unlocked = is_admin(user_id) or is_premium(user_id) or has_folder_access_db(user_id, folder)
-
-    if not is_unlocked:
-        bot.send_message(msg.chat.id, f"🔒 **Folder `{folder}` is Locked!**\n\n👉 Go to **Single Folder Passes** menu to buy pass for this folder.", parse_mode="Markdown")
+    if not is_admin(user_id) and not is_premium(user_id) and not has_folder_access_db(user_id, folder) and user_id not in temp_access:
+        bot.send_message(msg.chat.id, f"🔒 **Folder `{folder}` is Locked!** Buy Premium or Folder Pass to view.", parse_mode="Markdown")
         return
 
     vids = get_videos(folder) or []
