@@ -1,14 +1,19 @@
 import os
 from pymongo import MongoClient
 
-# Safe MONGO_URL import (Error-proof)
+# Safe MONGO_URL import
 try:
     from config import MONGO_URL
 except ImportError:
     MONGO_URL = os.getenv("MONGO_URL") or os.getenv("MONGO_URI")
 
 client = MongoClient(MONGO_URL)
-db = client["telegram_bot_db"]
+
+# Default DB Fallback (Purani database se exact connect hone ke liye)
+try:
+    db = client.get_default_database()
+except Exception:
+    db = client["telegram_bot_db"]
 
 # Collections
 users_col = db["users"]
@@ -49,30 +54,26 @@ def get_pending():
 def remove_pending(user_id):
     pending_col.delete_many({"user_id": int(user_id)})
 
-# VIDEOS & FOLDERS (SAFE CASE-INSENSITIVE SEARCH)
+# VIDEOS & FOLDERS (SAFE MATCHING)
 def add_video(folder, file_id):
     clean_folder = str(folder).strip()
     videos_col.insert_one({"folder": clean_folder, "file_id": file_id})
 
 def get_videos(folder):
     clean_folder = str(folder).strip()
-    # Case-Insensitive Matching
-    vids = list(videos_col.find({"folder": {"$regex": f"^{clean_folder}$", "$options": "i"}}))
+    # Direct match check pehle, fir case-insensitive fallback
+    vids = list(videos_col.find({"folder": clean_folder}))
+    if not vids:
+        vids = list(videos_col.find({"folder": {"$regex": f"^{clean_folder}$", "$options": "i"}}))
     return vids
 
 def get_folders():
     folders = videos_col.distinct("folder")
-    clean_folders = []
-    for f in folders:
-        if f and str(f).strip():
-            clean_f = str(f).strip()
-            if clean_f not in clean_folders:
-                clean_folders.append(clean_f)
-    return clean_folders
+    return [str(f).strip() for f in folders if f and str(f).strip()]
 
 def delete_folder(folder):
     clean_folder = str(folder).strip()
-    videos_col.delete_many({"folder": {"$regex": f"^{clean_folder}$", "$options": "i"}})
+    videos_col.delete_many({"folder": clean_folder})
 
 def delete_video(folder, index):
     vids = get_videos(folder)
