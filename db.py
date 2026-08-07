@@ -43,15 +43,14 @@ def get_all_users():
 def add_premium(user_id):
     users.update_one(
         {"user_id": int(user_id)},
-        {"$set": {"vip_premium": True}},
+        {"$set": {"premium": True}},
         upsert=True
     )
 
 def is_premium(user_id):
     user = users.find_one({"user_id": int(user_id)})
-    return bool(user and user.get("vip_premium"))
+    return bool(user and user.get("premium"))
 
-# NAYA PER-FOLDER UNLOCK LOGIC (Purani DB me strictly save hoga)
 def grant_folder_access_db(user_id, folder_name):
     clean_folder = str(folder_name).strip()
     users.update_one(
