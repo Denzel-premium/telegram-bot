@@ -16,7 +16,6 @@ sent_videos = {}
 current_folder = {}
 admin_states = {}
 user_pending_folder = {}
-user_folder_access = {}
 all_user_ids = set()
 
 channel_folder = "DEFAULT"
@@ -35,26 +34,6 @@ def track_user(user_id):
         add_user(user_id)
     except Exception:
         pass
-
-
-def grant_folder_access(user_id, folder_name):
-    uid = str(user_id)
-    fname = str(folder_name).strip()
-    if uid not in user_folder_access:
-        user_folder_access[uid] = []
-    if fname not in user_folder_access[uid]:
-        user_folder_access[uid].append(fname)
-
-
-def has_folder_access(user_id, folder_name):
-    uid = str(user_id)
-    fname = str(folder_name).strip()
-    if is_premium(user_id):
-        return True
-    return (
-        uid in user_folder_access
-        and fname in user_folder_access[uid]
-    )
 
 
 # ================= MAIN MENU BUILDER =================
@@ -270,7 +249,12 @@ def folder_pass_menu(call):
         f_price = get_config(f"folder_price_{f}") or "49"
         vids = get_videos(f) or []
         v_count = len(vids)
-        status_text = " ✅" if has_folder_access(user_id, f) else f" • ₹{f_price}"
+        
+        if is_admin(user_id):
+            status_text = f" • ₹{f_price}"
+        else:
+            status_text = " ✅" if (is_premium(user_id) or has_folder_access_db(user_id, f)) else f" • ₹{f_price}"
+            
         inline.add(telebot.types.InlineKeyboardButton(f"📂 {f} ({v_count} Vids){status_text}", callback_data=f"view_folder_{f}"))
 
     inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
@@ -296,17 +280,30 @@ def view_folder_cb(call):
 
     inline = telebot.types.InlineKeyboardMarkup(row_width=1)
 
-    if has_folder_access(user_id, folder):
-        inline.add(telebot.types.InlineKeyboardButton(f"🔄 Re-fetch {folder}", callback_data=f"refetch_pass_{folder}"))
-        status_info = "✅ **Aapke paas is folder ka Approved Pass hai!**"
+    if is_admin(user_id):
+        inline.add(telebot.types.InlineKeyboardButton("🔄 Test Send Videos", callback_data=f"refetch_pass_{folder}"))
+        inline.add(telebot.types.InlineKeyboardButton("🔙 Back to Folders", callback_data="folder_pass_menu"))
+        inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
+        
+        text = (
+            f"⚙️ **ADMIN FOLDER VIEW**\n\n"
+            f"📂 **Folder:** `{folder}`\n"
+            f"🎬 **Total Videos:** `{vids_count}`\n"
+            f"💰 **Current Price:** ₹{f_price}\n\n"
+            f"✏️ *Price badalne ke liye type karein:*\n`/setfolderprice {folder} NEW_PRICE`"
+        )
     else:
-        inline.add(telebot.types.InlineKeyboardButton("💎 Buy Pass", callback_data=f"buy_folder_{folder}"))
-        status_info = f"💰 **Pass Price:** ₹{f_price}"
+        if is_premium(user_id) or has_folder_access_db(user_id, folder):
+            inline.add(telebot.types.InlineKeyboardButton(f"🔄 Send / Re-fetch {folder}", callback_data=f"refetch_pass_{folder}"))
+            status_info = "✅ **Aapke paas is folder ka Access / Pass hai!**"
+        else:
+            inline.add(telebot.types.InlineKeyboardButton("💎 Buy Pass", callback_data=f"buy_folder_{folder}"))
+            status_info = f"💰 **Pass Price:** ₹{f_price}"
 
-    inline.add(telebot.types.InlineKeyboardButton("🔙 Back to Folders", callback_data="folder_pass_menu"))
-    inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
+        inline.add(telebot.types.InlineKeyboardButton("🔙 Back to Folders", callback_data="folder_pass_menu"))
+        inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
 
-    text = f"📂 **FOLDER:** `{folder}`\n🎬 **Total Videos:** `{vids_count}`\n\n{status_info}"
+        text = f"📂 **FOLDER:** `{folder}`\n🎬 **Total Videos:** `{vids_count}`\n\n{status_info}"
 
     try:
         bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=inline, parse_mode="Markdown")
@@ -314,7 +311,7 @@ def view_folder_cb(call):
         bot.send_message(call.message.chat.id, text, reply_markup=inline, parse_mode="Markdown")
 
 
-# ================= GENERATE QR FOR SPECIFIC FOLDER =================
+# ================= BUY FOLDER PASS =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("buy_folder_"))
 def buy_folder_cb(call):
     user_id = call.from_user.id
@@ -374,19 +371,19 @@ def paid_folder_prompt(call):
     bot.send_message(call.message.chat.id, text, reply_markup=inline, parse_mode="Markdown")
 
 
-# ================= RE-FETCH PASS HANDLER =================
+# ================= RE-FETCH / SEND PASS HANDLER =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("refetch_pass_"))
 def refetch_pass_cb(call):
     user_id = call.from_user.id
     folder = call.data.replace("refetch_pass_", "").strip()
 
-    if not has_folder_access(user_id, folder):
-        bot.answer_callback_query(call.id, f"❌ Active pass nahi hai!", show_alert=True)
+    if not is_admin(user_id) and not is_premium(user_id) and not has_folder_access_db(user_id, folder):
+        bot.answer_callback_query(call.id, f"❌ Access or Pass required!", show_alert=True)
         return
 
     vids = get_videos(folder) or []
     if not vids:
-        bot.send_message(call.message.chat.id, f"❌ Folder `{folder}` khali hai.")
+        bot.send_message(call.message.chat.id, f"❌ Folder `{folder}` is currently empty.")
         return
 
     sent_ids = []
@@ -415,7 +412,7 @@ def auto_save_channel(msg):
 @bot.message_handler(commands=['admin'])
 def admin(msg):
     if not is_admin(msg.from_user.id):
-        bot.send_message(msg.chat.id, f"❌ Not allowed\nYour ID: {msg.from_user.id}\nSet Admin ID: {ADMIN_ID}")
+        bot.send_message(msg.chat.id, "❌ Not allowed")
         return
 
     text = (
@@ -606,7 +603,7 @@ def handle_media(msg):
         bot.send_message(msg.chat.id, f"⏳ Payment Screenshot Received for '{pending_folder}'! Wait for approval.")
 
 
-# ================= REQUESTS APPROVAL =================
+# ================= REQUESTS APPROVAL (100% FIXED PERMISSION) =================
 @bot.message_handler(commands=['requests'])
 def requests_cmd(msg):
     if not is_admin(msg.from_user.id):
@@ -643,37 +640,14 @@ def approve(call):
     uid = int(parts[1])
     ptype = parts[2] if len(parts) > 2 else "ONLINE_VIP_PLAN"
 
+    # Always Grant Premium First to fix permission issues
+    add_premium(uid)
     remove_pending(uid)
 
-    # VIP ONLINE PLAN APPROVAL
-    if ptype == "ONLINE_VIP_PLAN":
-        add_premium(uid)
-        bot.send_message(uid, "🎉 **VIP Online Plan Approved!**\n\n📥 Click **'Download'** button below to access all folders.", parse_mode="Markdown")
-    
-    # SPECIFIC FOLDER PASS APPROVAL
-    else:
-        grant_folder_access(uid, ptype)
-        vids = get_videos(ptype) or []
+    if ptype != "ONLINE_VIP_PLAN":
+        grant_folder_access_db(uid, ptype)
 
-        if not vids:
-            bot.send_message(uid, f"🎉 Approved Pass for `{ptype}`! But this folder is currently empty.", parse_mode="Markdown")
-        else:
-            bot.send_message(uid, f"🎉 Approved Pass for `{ptype}`!\nSending videos now...", parse_mode="Markdown")
-
-            sent_ids = []
-            for v in vids:
-                m = bot.send_video(uid, v["file_id"], protect_content=True, caption=f"📂 Folder: `{ptype}`\n⚠️ Auto-delete in 15 min.", parse_mode="Markdown")
-                sent_ids.append(m.message_id)
-
-            set_expiry(uid, sent_ids, uid, time.time() + 900)
-
-            inline = telebot.types.InlineKeyboardMarkup(row_width=1)
-            inline.add(
-                telebot.types.InlineKeyboardButton("🔄 Re-fetch Videos", callback_data=f"refetch_pass_{ptype}"),
-                telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
-            )
-            bot.send_message(uid, f"⏳ 15 Minutes Timer Started for `{ptype}`!", reply_markup=inline, parse_mode="Markdown")
-
+    bot.send_message(uid, f"🎉 **Approved for {ptype}!**\n\n📥 Click **'Download'** button below or use Folder Passes to access.", parse_mode="Markdown")
     bot.send_message(call.message.chat.id, f"✅ Approved user {uid} for `{ptype}`!", parse_mode="Markdown")
 
 
@@ -743,7 +717,7 @@ def delvideo(msg):
     bot.reply_to(msg, "❌ Video deleted")
 
 
-# ================= DOWNLOAD (MAIN DOWNLOAD = 25 MINS TIMER) =================
+# ================= DOWNLOAD BUTTON HANDLER =================
 @bot.message_handler(func=lambda m: m.text == "📥 Download")
 def download(msg):
     track_user(msg.from_user.id)
@@ -767,7 +741,7 @@ def download(msg):
     bot.send_message(msg.chat.id, "⏳ Select folder (auto delete in 25 min):", reply_markup=kb)
 
 
-# ================= OPEN FOLDER =================
+# ================= OPEN FOLDER (SEND VIDEOS) =================
 @bot.message_handler(func=lambda m: m.text.startswith("📂 "))
 def open_folder(msg):
     user_id = msg.from_user.id
@@ -775,7 +749,7 @@ def open_folder(msg):
 
     folder = msg.text.replace("📂 ", "").strip()
 
-    if not has_folder_access(user_id, folder) and user_id not in temp_access:
+    if not is_admin(user_id) and not is_premium(user_id) and not has_folder_access_db(user_id, folder) and user_id not in temp_access:
         bot.send_message(msg.chat.id, "❌ Premium or Folder Pass required to open this folder.")
         return
 
