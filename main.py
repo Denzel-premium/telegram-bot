@@ -36,14 +36,16 @@ def auto_fix_old_users_timestamp():
         for uid in users:
             # Main VIP Check
             if is_premium(uid):
-                if not get_config(f"vip_time_{uid}"):
+                v_t = get_config(f"vip_time_{uid}")
+                if not v_t or str(v_t).strip() in ["None", "N/A", ""]:
                     set_config(f"vip_time_{uid}", curr_time)
                     fixed_count += 1
 
             # Folder Passes Check
             for f in folders:
                 if has_folder_access_db(uid, f):
-                    if not get_config(f"folder_time_{uid}_{f}"):
+                    f_t = get_config(f"folder_time_{uid}_{f}")
+                    if not f_t or str(f_t).strip() in ["None", "N/A", ""]:
                         set_config(f"folder_time_{uid}_{f}", curr_time)
                         fixed_count += 1
 
@@ -73,7 +75,7 @@ def track_user(user_id):
 
 
 def get_formatted_time(timestamp, compact=False):
-    if not timestamp:
+    if not timestamp or str(timestamp).strip() in ["None", "N/A", ""]:
         return "N/A"
     try:
         ts = float(timestamp)
@@ -112,6 +114,8 @@ def force_revoke_access(target_uid, ptype):
         del temp_access[target_uid]
     if target_uid in user_pending_folder:
         del user_pending_folder[target_uid]
+    if target_uid in sent_videos:
+        del sent_videos[target_uid]
 
     if ptype == "ONLINE_VIP_PLAN":
         # Database Se Main VIP Access Remove
@@ -122,7 +126,7 @@ def force_revoke_access(target_uid, ptype):
         
         # Configurations Reset
         try:
-            set_config(f"vip_time_{target_uid}", None)
+            set_config(f"vip_time_{target_uid}", "None")
         except Exception as e:
             print(f"Error clearing vip_time: {e}")
 
@@ -135,7 +139,7 @@ def force_revoke_access(target_uid, ptype):
             
         # Configurations Reset
         try:
-            set_config(f"folder_time_{target_uid}_{ptype}", None)
+            set_config(f"folder_time_{target_uid}_{ptype}", "None")
         except Exception as e:
             print(f"Error clearing folder_time: {e}")
 
@@ -547,7 +551,7 @@ def refetch_pass_cb(call):
     is_unlocked = is_admin(user_id) or has_folder_access_db(user_id, folder)
 
     if not is_unlocked:
-        bot.answer_callback_query(call.id, f"❌ Folder `{folder}` ka pass buy karein!", show_alert=True)
+        bot.answer_callback_query(call.id, f"❌ Access Revoked! Folder `{folder}` ka pass buy karein!", show_alert=True)
         return
 
     vids = get_videos(folder) or []
