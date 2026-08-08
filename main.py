@@ -85,13 +85,14 @@ def get_formatted_time(timestamp):
         hours = int((diff % 86400) // 3600)
 
         if days > 0:
-            ago_str = f"{days} Din {hours} Ghante pehle"
+            ago_str = f"{days}d {hours}h ago"
         else:
-            ago_str = f"{hours} Ghante pehle"
+            ago_str = f"{hours}h ago"
 
-        return f"{formatted_date} ({ago_str})"
+        # Code block style for smaller clean font
+        return f"`{formatted_date} ({ago_str})`"
     except Exception:
-        return "Unknown Date"
+        return "`Unknown Date`"
 
 
 def render_user_details(chat_id, target_uid):
@@ -109,7 +110,7 @@ def render_user_details(chat_id, target_uid):
     unlocked_info_str = ""
     for f in unlocked_folders:
         f_time = get_config(f"folder_time_{target_uid}_{f}")
-        unlocked_info_str += f"\n  • `{f}`\n    📅 {get_formatted_time(f_time)}"
+        unlocked_info_str += f"\n  • `{f}` ➔ {get_formatted_time(f_time)}"
 
     if not unlocked_info_str:
         unlocked_info_str = " None"
@@ -127,8 +128,8 @@ def render_user_details(chat_id, target_uid):
     text = (
         f"🔍 **USER DETAILS:** `{target_uid}`\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👑 **Main VIP Status:** {'✅ APPROVED' if is_vip else '❌ LOCKED'}\n"
-        f"📅 **VIP Unlocked Date:**\n`{vip_time_str if is_vip else 'N/A'}`\n\n"
+        f"👑 **Main VIP:** {'✅ APPROVED' if is_vip else '❌ LOCKED'}\n"
+        f"📅 **VIP Date:** {vip_time_str if is_vip else '`N/A`'}\n\n"
         f"📂 **Unlocked Folders:**{unlocked_info_str}\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
         f"👇 Action buttons for this user:"
