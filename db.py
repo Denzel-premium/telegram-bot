@@ -68,18 +68,15 @@ def grant_folder_access_db(user_id, folder_name):
 
 def revoke_folder_access_db(user_id, folder_name):
     clean_folder = str(folder_name).strip()
-    u = users.find_one({"user_id": int(user_id)})
-    if u and "folder_passes" in u:
-        updated_passes = [x for x in u["folder_passes"] if str(x).strip().lower() != clean_folder.lower()]
-        users.update_one(
-            {"user_id": int(user_id)},
-            {"$set": {"folder_passes": updated_passes}}
-        )
+    users.update_one(
+        {"user_id": int(user_id)},
+        {"$pull": {"folder_passes": clean_folder}}
+    )
 
 def has_folder_access_db(user_id, folder_name):
     clean_folder = str(folder_name).strip()
     u = users.find_one({"user_id": int(user_id)})
-    if u and "folder_passes" in u:
+    if u and "folder_passes" in u and isinstance(u["folder_passes"], list):
         passes = [str(x).strip().lower() for x in u["folder_passes"]]
         return clean_folder.lower() in passes
     return False
@@ -96,7 +93,7 @@ def remove_pending(user_id):
     pending.delete_many({"user_id": int(user_id)})
 
 
-# ================= VIDEOS (FIXED CASE-INSENSITIVE FETCH) =================
+# ================= VIDEOS =================
 def add_video(folder, file_id):
     clean_folder = str(folder).strip()
     if not videos.find_one({"file_id": file_id}):
@@ -111,9 +108,7 @@ def get_folders():
 
 def get_videos(folder):
     clean_folder = str(folder).strip()
-    # Direct Exact Match Check
     vids = list(videos.find({"folder": clean_folder}).sort("_id", -1))
-    # Fallback to Case-Insensitive Match if not found
     if not vids:
         vids = list(videos.find({"folder": {"$regex": f"^{clean_folder}$", "$options": "i"}}).sort("_id", -1))
     return vids
