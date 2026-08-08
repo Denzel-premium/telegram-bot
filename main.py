@@ -1,14 +1,3 @@
-Aapke code me **crash hone ki asli vajah** bilkul pakdi gayi hai!
-### 🚨 File Crash Kyu Ho Rahi Thi?
-Aapke code me **2 major errors (Bugs)** the jo bot ko run hote hi ya command chalate hi crash kar rahe the:
- 1. **TypeError / AttributeError (Crash on Revoke):**
-   * Code me jab aap btnrevoke_ button dabate the, tab call.message.caption aur call.message.text ke check me ek issue tha. Jab Telegram photo message me text edit karne ki koshish ki jaati hai, tab edit_message_text crash kar deta tha kyunki photo ke paas caption hota hai, text nahi.
- 2. **Recursive Loop & Variable Type Error:**
-   * render_user_details me function call hote waqt user ID (Integer vs String) match nahi ho raha tha, jis se database error throw karta tha aur script terminate (crash) ho jaati thi.
-### 🛠️ Crash-Proof Fix (Ab Code Bilkul Crash Nahi Hoga)
-Humne code ke sabhi try-except blocks aur edit handlers ko safe kar diya hai. Ab agar koi animation ya message edit fail bhi hota hai, **bot crash nahi hoga**, aur database se access **turant hat jayega**.
-Niche poora fixed code hai, ise apni file me paste karein:
-```python
 import io
 import threading
 import time
