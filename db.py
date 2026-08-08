@@ -68,10 +68,14 @@ def grant_folder_access_db(user_id, folder_name):
 
 def revoke_folder_access_db(user_id, folder_name):
     clean_folder = str(folder_name).strip()
-    users.update_one(
-        {"user_id": int(user_id)},
-        {"$pull": {"folder_passes": clean_folder}}
-    )
+    u = users.find_one({"user_id": int(user_id)})
+    if u and "folder_passes" in u and isinstance(u["folder_passes"], list):
+        # Case-insensitive removal
+        updated_passes = [x for x in u["folder_passes"] if str(x).strip().lower() != clean_folder.lower()]
+        users.update_one(
+            {"user_id": int(user_id)},
+            {"$set": {"folder_passes": updated_passes}}
+        )
 
 def has_folder_access_db(user_id, folder_name):
     clean_folder = str(folder_name).strip()
