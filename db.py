@@ -47,6 +47,13 @@ def add_premium(user_id):
         upsert=True
     )
 
+def remove_premium(user_id):
+    users.update_one(
+        {"user_id": int(user_id)},
+        {"$set": {"premium": False}},
+        upsert=True
+    )
+
 def is_premium(user_id):
     user = users.find_one({"user_id": int(user_id)})
     return bool(user and user.get("premium"))
@@ -58,6 +65,16 @@ def grant_folder_access_db(user_id, folder_name):
         {"$addToSet": {"folder_passes": clean_folder}},
         upsert=True
     )
+
+def revoke_folder_access_db(user_id, folder_name):
+    clean_folder = str(folder_name).strip()
+    u = users.find_one({"user_id": int(user_id)})
+    if u and "folder_passes" in u:
+        updated_passes = [x for x in u["folder_passes"] if str(x).strip().lower() != clean_folder.lower()]
+        users.update_one(
+            {"user_id": int(user_id)},
+            {"$set": {"folder_passes": updated_passes}}
+        )
 
 def has_folder_access_db(user_id, folder_name):
     clean_folder = str(folder_name).strip()
