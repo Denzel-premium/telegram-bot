@@ -11,6 +11,12 @@ from db import *
 
 bot = telebot.TeleBot(TOKEN)
 
+# Clear any webhook conflict if running locally
+try:
+    bot.remove_webhook()
+except Exception:
+    pass
+
 # ================= STORAGE =================
 temp_access = {}
 sent_videos = {}
@@ -92,8 +98,6 @@ def get_formatted_time(timestamp, compact=False):
         else:
             ago_str = f"{mins}m ago"
 
-        if compact:
-            return f"`{formatted_date} ({ago_str})`"
         return f"`{formatted_date} ({ago_str})`"
     except Exception:
         return "`Unknown Date`"
@@ -128,6 +132,8 @@ def render_user_details(chat_id, target_uid):
 
     for f in unlocked_folders:
         kb.add(telebot.types.InlineKeyboardButton(f"🚫 Revoke Pass ({f})", callback_data=f"btnrevoke_{target_uid}_{f}"))
+
+    kb.add(telebot.types.InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_dashboard"))
 
     text = (
         f"🔍 **USER DETAILS:** `{target_uid}`\n"
@@ -519,39 +525,148 @@ def auto_save_channel(msg):
     print(f"Saved in folder: {channel_folder}")
 
 
-# ================= ADMIN PANEL =================
+# ================= INTERACTIVE ADMIN PANEL (BUTTONS DASHBOARD) =================
+def build_admin_dashboard():
+    text = (
+        "🛠 **ADMIN CONTROL DASHBOARD**\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "Niche diye gaye buttons se bot manage karein:"
+    )
+    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        telebot.types.InlineKeyboardButton("📥 Pending Requests", callback_data="admin_requests"),
+        telebot.types.InlineKeyboardButton("👥 User Manager", callback_data="admin_userlist")
+    )
+    kb.add(
+        telebot.types.InlineKeyboardButton("📂 Folders List", callback_data="admin_folders"),
+        telebot.types.InlineKeyboardButton("📊 Bot Stats", callback_data="admin_stats")
+    )
+    kb.add(
+        telebot.types.InlineKeyboardButton("⚙️ Settings Helper", callback_data="admin_settings"),
+        telebot.types.InlineKeyboardButton("📢 Broadcast Help", callback_data="admin_broadcast_help")
+    )
+    return text, kb
+
+
 @bot.message_handler(commands=['admin'])
 def admin(msg):
     if not is_admin(msg.from_user.id):
         bot.send_message(msg.chat.id, "❌ Not allowed")
         return
+    text, kb = build_admin_dashboard()
+    bot.send_message(msg.chat.id, text, reply_markup=kb, parse_mode="Markdown")
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "admin_dashboard")
+def admin_dashboard_cb(call):
+    if not is_admin(call.from_user.id):
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
+    text, kb = build_admin_dashboard()
+    try:
+        bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=kb, parse_mode="Markdown")
+    except Exception:
+        bot.send_message(call.message.chat.id, text, reply_markup=kb, parse_mode="Markdown")
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "admin_requests")
+def admin_requests_cb(call):
+    if not is_admin(call.from_user.id):
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
+    requests_cmd(call.message)
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "admin_userlist")
+def admin_userlist_cb(call):
+    if not is_admin(call.from_user.id):
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
+    render_compact_user_list(call.message.chat.id, page=1)
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "admin_folders")
+def admin_folders_cb(call):
+    if not is_admin(call.from_user.id):
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
+    showfolders(call.message)
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "admin_stats")
+def admin_stats_cb(call):
+    if not is_admin(call.from_user.id):
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
+    stats(call.message)
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "admin_settings")
+def admin_settings_cb(call):
+    if not is_admin(call.from_user.id):
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
 
     text = (
-        "🛠 **ADMIN PANEL & USER MANAGEMENT**\n\n"
-        "👥 **USER MANAGER:**\n"
-        "👥 `/userlist` (View All Users Compact List)\n"
-        "🔍 `/finduser USER_ID` (Search user & check date/time)\n"
-        "🚫 `/revoke USER_ID [FOLDER_NAME]` (Direct Command Revoke)\n\n"
-        "⚙️ **SETTINGS:**\n"
-        "✏️ `/setstart TEXT`\n"
-        "🖼 `/setimage` (Set Banner Photo)\n"
-        "🎬 `/setdemo` (Set Demo Video)\n"
-        "💰 `/setprice PRICE`\n"
-        "📂 `/setfolderprice FOLDER_NAME PRICE`\n"
-        "📝 `/setpasstext YOUR_CUSTOM_TEXT`\n"
-        "💳 `/setupi YOUR_UPI_ID`\n\n"
-        "📥 **REQUESTS:**\n"
-        "💳 `/requests` (Pending Payments)\n\n"
-        "📢 `/broadcast MESSAGE`\n"
-        "📊 `/stats`\n\n"
-        "📂 `/setfolder NAME`\n"
-        "📂 `/setchannelfolder NAME`\n"
-        "📁 `/folders`\n"
-        "🗑 `/delfolder NAME`\n"
-        "❌ `/delvideo INDEX`"
+        "⚙️ **BOT SETTINGS COMMANDS:**\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "💳 `/setupi YOUR_UPI_ID` ➔ Set UPI ID\n"
+        "💰 `/setprice PRICE` ➔ Set Main VIP Price\n"
+        "📂 `/setfolderprice FOLDER PRICE` ➔ Set Folder Price\n"
+        "✏️ `/setstart TEXT` ➔ Set Start Text\n"
+        "🖼 `/setimage` ➔ Upload Banner Image\n"
+        "🎬 `/setdemo` ➔ Upload Demo Video\n"
+        "📝 `/setpasstext TEXT` ➔ Set Folder Pass Text"
     )
+    kb = telebot.types.InlineKeyboardMarkup()
+    kb.add(telebot.types.InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_dashboard"))
+    
+    try:
+        bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=kb, parse_mode="Markdown")
+    except Exception:
+        bot.send_message(call.message.chat.id, text, reply_markup=kb, parse_mode="Markdown")
 
-    bot.send_message(msg.chat.id, text, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda c: c.data == "admin_broadcast_help")
+def admin_broadcast_help_cb(call):
+    if not is_admin(call.from_user.id):
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
+
+    text = (
+        "📢 **BROADCAST COMMAND:**\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Sabhi bot users ko message bhejne ke liye likhein:\n"
+        "`/broadcast Aapka Custom Message Yahan`"
+    )
+    kb = telebot.types.InlineKeyboardMarkup()
+    kb.add(telebot.types.InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_dashboard"))
+    
+    try:
+        bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=kb, parse_mode="Markdown")
+    except Exception:
+        bot.send_message(call.message.chat.id, text, reply_markup=kb, parse_mode="Markdown")
 
 
 # ================= USER SEARCH COMMAND =================
@@ -642,6 +757,8 @@ def render_compact_user_list(chat_id, page=1, message_id=None):
 
     if buttons:
         kb.add(*buttons)
+
+    kb.add(telebot.types.InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_dashboard"))
 
     if message_id:
         try:
