@@ -99,7 +99,26 @@ def get_formatted_time(timestamp, compact=False):
         return "`Unknown Date`"
 
 
-def render_user_details(chat_id, target_uid):
+# ================= SAFE REVOKE HELPER =================
+def perform_revoke(uid, ptype):
+    """Handles deep database purging for revoking VIP or Specific Folder Access."""
+    if ptype == "ONLINE_VIP_PLAN":
+        try:
+            remove_premium(uid)
+        except Exception as e:
+            print(f"Error removing premium: {e}")
+        set_config(f"vip_time_{uid}", None)
+        if uid in temp_access:
+            del temp_access[uid]
+    else:
+        try:
+            revoke_folder_access_db(uid, ptype)
+        except Exception as e:
+            print(f"Error revoking folder access: {e}")
+        set_config(f"folder_time_{uid}_{ptype}", None)
+
+
+def render_user_details(chat_id, target_uid, message_id=None):
     is_vip = is_premium(target_uid)
     folders = get_folders() or []
     unlocked_folders = []
@@ -119,7 +138,7 @@ def render_user_details(chat_id, target_uid):
     if not unlocked_info_str:
         unlocked_info_str = " None"
 
-    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+    kb = telebot.types.InlineKeyboardMarkup(row_width=1)
 
     if is_vip:
         kb.add(telebot.types.InlineKeyboardButton("🚫 Revoke Main VIP", callback_data=f"btnrevoke_{target_uid}_ONLINE_VIP_PLAN"))
@@ -139,7 +158,13 @@ def render_user_details(chat_id, target_uid):
         f"👇 Action buttons for this user:"
     )
 
-    bot.send_message(chat_id, text, reply_markup=kb, parse_mode="Markdown")
+    if message_id:
+        try:
+            bot.edit_message_text(text, chat_id=chat_id, message_id=message_id, reply_markup=kb, parse_mode="Markdown")
+        except Exception:
+            bot.send_message(chat_id, text, reply_markup=kb, parse_mode="Markdown")
+    else:
+        bot.send_message(chat_id, text, reply_markup=kb, parse_mode="Markdown")
 
 
 # ================= MAIN MENU BUILDER =================
@@ -694,16 +719,14 @@ def revoke_cmd(msg):
 
     if len(parts) >= 2:
         folder_name = parts[1].strip()
-        revoke_folder_access_db(target_uid, folder_name)
-        set_config(f"folder_time_{target_uid}_{folder_name}", None)
+        perform_revoke(target_uid, folder_name)
         bot.reply_to(msg, f"🚫 Folder Access `{folder_name}` for user `{target_uid}` is REVOKED!", parse_mode="Markdown")
         try:
             bot.send_message(target_uid, f"⚠️ **ACCESS CANCELLED**\n\nAapka Folder Pass `{folder_name}` ka access cancel kar diya gaya hai.", parse_mode="Markdown")
         except Exception:
             pass
     else:
-        remove_premium(target_uid)
-        set_config(f"vip_time_{target_uid}", None)
+        perform_revoke(target_uid, "ONLINE_VIP_PLAN")
         bot.reply_to(msg, f"🚫 Main Premium for user `{target_uid}` is REVOKED!", parse_mode="Markdown")
         try:
             bot.send_message(target_uid, "⚠️ **PREMIUM CANCELLED**\n\nAapka Main Premium Access cancel kar diya gaya hai.", parse_mode="Markdown")
@@ -973,16 +996,17 @@ def approve(call):
         "*(Glti se approve hua ho toh niche button se revoke karein)*"
     )
 
-    try:
-        bot.edit_message_caption(admin_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_btn, parse_mode="Markdown")
-    except Exception:
+    # If call was initiated from finduser card refresh UI directly
+    if call.message.caption:
         try:
-            bot.edit_message_text(admin_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_btn, parse_mode="Markdown")
+            bot.edit_message_caption(admin_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_btn, parse_mode="Markdown")
         except Exception:
-            bot.send_message(call.message.chat.id, admin_ack_msg, reply_markup=admin_btn, parse_mode="Markdown")
+            pass
+    else:
+        render_user_details(call.message.chat.id, uid, message_id=call.message.message_id)
 
 
-# Live Status Revoke Handler with Instant Screen Alert
+# Live Status Revoke Handler with Instant Screen Alert & Dynamic UI Update
 @bot.callback_query_handler(func=lambda c: c.data.startswith("btnrevoke_"))
 def button_revoke_cb(call):
     if not is_admin(call.from_user.id):
@@ -993,18 +1017,17 @@ def button_revoke_cb(call):
     uid = int(parts[0])
     ptype = parts[1] if len(parts) > 1 else "ONLINE_VIP_PLAN"
 
+    # Deep revoke execution
+    perform_revoke(uid, ptype)
+
     try:
         bot.answer_callback_query(call.id, f"🚫 Access Revoked for User {uid}!", show_alert=True)
     except Exception:
         pass
 
     if ptype == "ONLINE_VIP_PLAN":
-        remove_premium(uid)
-        set_config(f"vip_time_{uid}", None)
         user_notify = "⚠️ **PREMIUM CANCELLED**\n\nAapka Main Premium access cancel/revoke kar diya gaya hai."
     else:
-        revoke_folder_access_db(uid, ptype)
-        set_config(f"folder_time_{uid}_{ptype}", None)
         user_notify = f"⚠️ **ACCESS CANCELLED**\n\nAapka Folder `{ptype}` ka access cancel kar diya gaya hai."
 
     try:
@@ -1021,13 +1044,17 @@ def button_revoke_cb(call):
         "❌ *Access is user se successfully wapas le liya gaya hai.*"
     )
 
-    try:
-        bot.edit_message_caption(revoked_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
-    except Exception:
+    if call.message.caption:
         try:
-            bot.edit_message_text(revoked_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
+            bot.edit_message_caption(revoked_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
         except Exception:
-            bot.send_message(call.message.chat.id, revoked_ack_msg, parse_mode="Markdown")
+            try:
+                bot.edit_message_text(revoked_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
+            except Exception:
+                bot.send_message(call.message.chat.id, revoked_ack_msg, parse_mode="Markdown")
+    else:
+        # Instantly render updated user details card for /finduser UI
+        render_user_details(call.message.chat.id, uid, message_id=call.message.message_id)
 
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("rej_"))
