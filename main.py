@@ -11,7 +11,7 @@ from db import *
 
 bot = telebot.TeleBot(TOKEN)
 
-# Clear any webhook conflict if running locally
+# Clear any webhook conflict on start
 try:
     bot.remove_webhook()
 except Exception:
@@ -132,8 +132,6 @@ def render_user_details(chat_id, target_uid):
 
     for f in unlocked_folders:
         kb.add(telebot.types.InlineKeyboardButton(f"🚫 Revoke Pass ({f})", callback_data=f"btnrevoke_{target_uid}_{f}"))
-
-    kb.add(telebot.types.InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_dashboard"))
 
     text = (
         f"🔍 **USER DETAILS:** `{target_uid}`\n"
@@ -525,158 +523,39 @@ def auto_save_channel(msg):
     print(f"Saved in folder: {channel_folder}")
 
 
-# ================= INTERACTIVE ADMIN PANEL (BUTTONS DASHBOARD) =================
-def build_admin_dashboard():
-    text = (
-        "🛠 **ADMIN CONTROL DASHBOARD**\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "Niche diye gaye buttons se bot manage karein:"
-    )
-    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        telebot.types.InlineKeyboardButton("📥 Pending Requests", callback_data="admin_requests"),
-        telebot.types.InlineKeyboardButton("👥 User Manager", callback_data="admin_userlist")
-    )
-    kb.add(
-        telebot.types.InlineKeyboardButton("📂 Folders List", callback_data="admin_folders"),
-        telebot.types.InlineKeyboardButton("📊 Detailed Bot Stats", callback_data="admin_stats")
-    )
-    kb.add(
-        telebot.types.InlineKeyboardButton("⚙️ Settings Helper", callback_data="admin_settings"),
-        telebot.types.InlineKeyboardButton("📢 Broadcast Help", callback_data="admin_broadcast_help")
-    )
-    return text, kb
-
-
+# ================= ADMIN PANEL =================
 @bot.message_handler(commands=['admin'])
 def admin(msg):
     if not is_admin(msg.from_user.id):
         bot.send_message(msg.chat.id, "❌ Not allowed")
         return
-    text, kb = build_admin_dashboard()
-    bot.send_message(msg.chat.id, text, reply_markup=kb, parse_mode="Markdown")
-
-
-@bot.callback_query_handler(func=lambda c: c.data == "admin_dashboard")
-def admin_dashboard_cb(call):
-    if not is_admin(call.from_user.id):
-        return
-    try:
-        bot.answer_callback_query(call.id)
-    except Exception:
-        pass
-    text, kb = build_admin_dashboard()
-    try:
-        bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=kb, parse_mode="Markdown")
-    except Exception:
-        bot.send_message(call.message.chat.id, text, reply_markup=kb, parse_mode="Markdown")
-
-
-@bot.callback_query_handler(func=lambda c: c.data == "admin_requests")
-def admin_requests_cb(call):
-    if not is_admin(call.from_user.id):
-        return
-    
-    pending = get_pending()
-    if not pending:
-        try:
-            bot.answer_callback_query(call.id, "❌ No pending payment requests right now!", show_alert=True)
-        except Exception:
-            pass
-        bot.send_message(call.message.chat.id, "❌ **NO PENDING REQUESTS**\n\nAbhi koi naya payment request nahi aaya hai.", parse_mode="Markdown")
-        return
-
-    try:
-        bot.answer_callback_query(call.id, f"📥 Found {len(pending)} pending request(s)!")
-    except Exception:
-        pass
-    requests_cmd(call.message)
-
-
-@bot.callback_query_handler(func=lambda c: c.data == "admin_userlist")
-def admin_userlist_cb(call):
-    if not is_admin(call.from_user.id):
-        return
-    try:
-        bot.answer_callback_query(call.id)
-    except Exception:
-        pass
-    render_compact_user_list(call.message.chat.id, page=1)
-
-
-@bot.callback_query_handler(func=lambda c: c.data == "admin_folders")
-def admin_folders_cb(call):
-    if not is_admin(call.from_user.id):
-        return
-    try:
-        bot.answer_callback_query(call.id)
-    except Exception:
-        pass
-    showfolders(call.message)
-
-
-@bot.callback_query_handler(func=lambda c: c.data == "admin_stats")
-def admin_stats_cb(call):
-    if not is_admin(call.from_user.id):
-        return
-    try:
-        bot.answer_callback_query(call.id)
-    except Exception:
-        pass
-    stats(call.message)
-
-
-@bot.callback_query_handler(func=lambda c: c.data == "admin_settings")
-def admin_settings_cb(call):
-    if not is_admin(call.from_user.id):
-        return
-    try:
-        bot.answer_callback_query(call.id)
-    except Exception:
-        pass
 
     text = (
-        "⚙️ **BOT SETTINGS COMMANDS:**\n"
+        "🛠 **ADMIN PANEL COMMANDS**\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "💳 `/setupi YOUR_UPI_ID` ➔ Set UPI ID\n"
+        "📥 **REQUESTS & USERS:**\n"
+        "💳 `/requests` ➔ Pending payment screenshots\n"
+        "👥 `/userlist` ➔ Compact user list with dates\n"
+        "🔍 `/finduser USER_ID` ➔ Search user & check details\n"
+        "🚫 `/revoke USER_ID` ➔ Revoke Main Premium\n"
+        "🚫 `/revoke USER_ID FOLDER` ➔ Revoke Folder Pass\n\n"
+        "⚙️ **SETTINGS:**\n"
+        "💳 `/setupi UPI_ID` ➔ Set UPI ID\n"
         "💰 `/setprice PRICE` ➔ Set Main VIP Price\n"
         "📂 `/setfolderprice FOLDER PRICE` ➔ Set Folder Price\n"
         "✏️ `/setstart TEXT` ➔ Set Start Text\n"
-        "🖼 `/setimage` ➔ Upload Banner Image\n"
+        "🖼 `/setimage` ➔ Upload Banner Photo\n"
         "🎬 `/setdemo` ➔ Upload Demo Video\n"
-        "📝 `/setpasstext TEXT` ➔ Set Folder Pass Text"
+        "📝 `/setpasstext TEXT` ➔ Set Folder Pass Text\n\n"
+        "📊 **OTHER:**\n"
+        "📢 `/broadcast MESSAGE` ➔ Broadcast to all users\n"
+        "📊 `/stats` ➔ View Detailed Bot Stats\n"
+        "📂 `/folders` ➔ View All Folders\n"
+        "🗑 `/delfolder NAME` ➔ Delete Folder\n"
+        "❌ `/delvideo INDEX` ➔ Delete Video From Folder"
     )
-    kb = telebot.types.InlineKeyboardMarkup()
-    kb.add(telebot.types.InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_dashboard"))
-    
-    try:
-        bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=kb, parse_mode="Markdown")
-    except Exception:
-        bot.send_message(call.message.chat.id, text, reply_markup=kb, parse_mode="Markdown")
 
-
-@bot.callback_query_handler(func=lambda c: c.data == "admin_broadcast_help")
-def admin_broadcast_help_cb(call):
-    if not is_admin(call.from_user.id):
-        return
-    try:
-        bot.answer_callback_query(call.id)
-    except Exception:
-        pass
-
-    text = (
-        "📢 **BROADCAST COMMAND:**\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Sabhi bot users ko message bhejne ke liye likhein:\n"
-        "`/broadcast Aapka Custom Message Yahan`"
-    )
-    kb = telebot.types.InlineKeyboardMarkup()
-    kb.add(telebot.types.InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_dashboard"))
-    
-    try:
-        bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=kb, parse_mode="Markdown")
-    except Exception:
-        bot.send_message(call.message.chat.id, text, reply_markup=kb, parse_mode="Markdown")
+    bot.send_message(msg.chat.id, text, parse_mode="Markdown")
 
 
 # ================= USER SEARCH COMMAND =================
@@ -698,7 +577,7 @@ def finduser_cmd(msg):
     render_user_details(msg.chat.id, int(raw_uid))
 
 
-# ================= COMPACT USER LIST WITH SMALL FONT DATE/TIME & ACCESS DETAILS =================
+# ================= COMPACT USER LIST WITH SMALL FONT DATE/TIME =================
 def render_compact_user_list(chat_id, page=1, message_id=None):
     db_users = get_all_users() or []
     users = list(set(list(db_users) + list(all_user_ids)))
@@ -729,13 +608,11 @@ def render_compact_user_list(chat_id, page=1, message_id=None):
     for idx, uid in enumerate(current_batch, start=start_idx + 1):
         is_vip = is_premium(uid)
         
-        # Unlocked folders check
         unlocked = []
         for f in folders:
             if has_folder_access_db(uid, f):
                 unlocked.append(f)
 
-        # Status Build
         if is_vip:
             status_str = "👑 Main VIP"
         elif unlocked:
@@ -745,12 +622,10 @@ def render_compact_user_list(chat_id, page=1, message_id=None):
 
         list_text += f"{idx}. `{uid}` • **{status_str}**\n"
 
-        # Display Small Font Date & Time for Main VIP
         if is_vip:
             v_time = get_config(f"vip_time_{uid}")
             list_text += f"   `📅 Main VIP ➔ {get_formatted_time(v_time, compact=True)}`\n"
 
-        # Display Small Font Date & Time for Folders
         for f in unlocked:
             f_time = get_config(f"folder_time_{uid}_{f}")
             list_text += f"   `└ {f} ➔ {get_formatted_time(f_time, compact=True)}`\n"
@@ -767,8 +642,6 @@ def render_compact_user_list(chat_id, page=1, message_id=None):
 
     if buttons:
         kb.add(*buttons)
-
-    kb.add(telebot.types.InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_dashboard"))
 
     if message_id:
         try:
@@ -976,11 +849,8 @@ def stats(msg):
                 f"📁 **Total Folders:** `{len(folders)}`\n"
                 "━━━━━━━━━━━━━━━━━━━━━━"
             )
-            
-            kb = telebot.types.InlineKeyboardMarkup()
-            kb.add(telebot.types.InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_dashboard"))
 
-            bot.send_message(msg.chat.id, stats_text, reply_markup=kb, parse_mode="Markdown")
+            bot.send_message(msg.chat.id, stats_text, parse_mode="Markdown")
         except Exception as e:
             bot.send_message(msg.chat.id, f"⚠️ Stats Error: {e}")
 
@@ -1027,7 +897,7 @@ def handle_media(msg):
         bot.send_message(msg.chat.id, f"⏳ Payment Screenshot Received for '{pending_folder}'! Wait for admin approval.")
 
 
-# ================= REQUESTS APPROVAL WITH LIVE STATUS UPDATES =================
+# ================= REQUESTS APPROVAL =================
 @bot.message_handler(commands=['requests'])
 def requests_cmd(msg):
     if not is_admin(msg.from_user.id):
@@ -1133,7 +1003,7 @@ def approve(call):
             bot.send_message(call.message.chat.id, admin_ack_msg, reply_markup=admin_btn, parse_mode="Markdown")
 
 
-# Live Status Revoke Handler with Instant Screen Alert
+# Live Status Revoke Handler
 @bot.callback_query_handler(func=lambda c: c.data.startswith("btnrevoke_"))
 def button_revoke_cb(call):
     if not is_admin(call.from_user.id):
