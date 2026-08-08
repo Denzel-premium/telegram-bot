@@ -1,3 +1,6 @@
+Yeh lijiye aapka poora code bilkul theek karke aur end se formatting errors hata kar niche diya gaya hai.
+Aap is poore code ko copy karke apni main.py file me paste kar sakte hain:
+```python
 import io
 import threading
 import time
@@ -107,7 +110,7 @@ def force_revoke_access(target_uid, ptype):
     except Exception:
         return
 
-    # 1. RAM Memory Clear (Prevent Memory Leak Access)
+    # 1. RAM Memory Clear
     if target_uid in temp_access:
         del temp_access[target_uid]
     if target_uid in user_pending_folder:
@@ -1030,8 +1033,8 @@ def approve(call):
     )
 
     try:
-        if call.message.content_type == 'photo':
-            bot.edit_message_caption(admin_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_btn, parse_mode="Markdown")
+        if getattr(call.message, 'content_type', None) == 'photo':
+            bot.edit_message_caption(caption=admin_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_btn, parse_mode="Markdown")
         else:
             bot.edit_message_text(admin_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_btn, parse_mode="Markdown")
     except Exception:
@@ -1077,12 +1080,15 @@ def button_revoke_cb(call):
     )
 
     try:
-        if call.message.content_type == 'photo':
-            bot.edit_message_caption(revoked_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
+        if getattr(call.message, 'content_type', None) == 'photo':
+            bot.edit_message_caption(caption=revoked_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
         else:
             render_user_details(call.message.chat.id, uid, message_id=call.message.message_id)
     except Exception:
-        render_user_details(call.message.chat.id, uid, message_id=call.message.message_id)
+        try:
+            render_user_details(call.message.chat.id, uid, message_id=call.message.message_id)
+        except Exception:
+            pass
 
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("rej_"))
@@ -1110,8 +1116,8 @@ def reject(call):
     )
 
     try:
-        if call.message.content_type == 'photo':
-            bot.edit_message_caption(rejected_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
+        if getattr(call.message, 'content_type', None) == 'photo':
+            bot.edit_message_caption(caption=rejected_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
         else:
             bot.edit_message_text(rejected_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
     except Exception:
