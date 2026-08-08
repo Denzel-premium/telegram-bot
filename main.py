@@ -51,6 +51,49 @@ def get_time_ago_str(timestamp):
         return "Unknown Date"
 
 
+def render_user_details(chat_id, target_uid):
+    is_vip = is_premium(target_uid)
+    folders = get_folders() or []
+    unlocked_folders = []
+
+    for f in folders:
+        if has_folder_access_db(target_uid, f):
+            unlocked_folders.append(f)
+
+    vip_time = get_config(f"vip_time_{target_uid}")
+    vip_time_str = get_time_ago_str(vip_time)
+
+    unlocked_info_str = ""
+    for f in unlocked_folders:
+        f_time = get_config(f"folder_time_{target_uid}_{f}")
+        unlocked_info_str += f"\n  • `{f}` (Purchased: {get_time_ago_str(f_time)})"
+
+    if not unlocked_info_str:
+        unlocked_info_str = " None"
+
+    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+
+    if is_vip:
+        kb.add(telebot.types.InlineKeyboardButton("🚫 Revoke Main VIP", callback_data=f"btnrevoke_{target_uid}_ONLINE_VIP_PLAN"))
+    else:
+        kb.add(telebot.types.InlineKeyboardButton("✅ Grant Main VIP", callback_data=f"apv_{target_uid}_ONLINE_VIP_PLAN"))
+
+    for f in unlocked_folders:
+        kb.add(telebot.types.InlineKeyboardButton(f"🚫 Revoke Pass ({f})", callback_data=f"btnrevoke_{target_uid}_{f}"))
+
+    text = (
+        f"🔍 **USER DETAILS:** `{target_uid}`\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👑 **Main VIP Status:** {'✅ APPROVED' if is_vip else '❌ LOCKED'}\n"
+        f"⏱️ **Main VIP Access Since:** {vip_time_str if is_vip else 'N/A'}\n\n"
+        f"📂 **Unlocked Folders:**{unlocked_info_str}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👇 Action buttons for this user:"
+    )
+
+    bot.send_message(chat_id, text, reply_markup=kb, parse_mode="Markdown")
+
+
 # ================= MAIN MENU BUILDER =================
 def build_main_menu():
     text = get_config("start_text") or "👋 Welcome"
@@ -479,47 +522,7 @@ def finduser_cmd(msg):
         bot.reply_to(msg, "❌ Invalid User ID!")
         return
 
-    uid = int(raw_uid)
-    is_vip = is_premium(uid)
-    folders = get_folders() or []
-    unlocked_folders = []
-
-    for f in folders:
-        if has_folder_access_db(uid, f):
-            unlocked_folders.append(f)
-
-    vip_time = get_config(f"vip_time_{uid}")
-    vip_time_str = get_time_ago_str(vip_time)
-
-    unlocked_info_str = ""
-    for f in unlocked_folders:
-        f_time = get_config(f"folder_time_{uid}_{f}")
-        unlocked_info_str += f"\n  • `{f}` (Purchased: {get_time_ago_str(f_time)})"
-
-    if not unlocked_info_str:
-        unlocked_info_str = " None"
-
-    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-
-    if is_vip:
-        kb.add(telebot.types.InlineKeyboardButton("🚫 Revoke Main VIP", callback_data=f"btnrevoke_{uid}_ONLINE_VIP_PLAN"))
-    else:
-        kb.add(telebot.types.InlineKeyboardButton("✅ Grant Main VIP", callback_data=f"apv_{uid}_ONLINE_VIP_PLAN"))
-
-    for f in unlocked_folders:
-        kb.add(telebot.types.InlineKeyboardButton(f"🚫 Revoke Pass ({f})", callback_data=f"btnrevoke_{uid}_{f}"))
-
-    text = (
-        f"🔍 **USER DETAILS:** `{uid}`\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👑 **Main VIP Status:** {'✅ APPROVED' if is_vip else '❌ LOCKED'}\n"
-        f"⏱️ **Main VIP Access Since:** {vip_time_str if is_vip else 'N/A'}\n\n"
-        f"📂 **Unlocked Folders:**{unlocked_info_str}\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"👇 Action buttons for this user:"
-    )
-
-    bot.send_message(msg.chat.id, text, reply_markup=kb, parse_mode="Markdown")
+    render_user_details(msg.chat.id, int(raw_uid))
 
 
 # ================= USER LIST & REVOKE MANAGEMENT =================
@@ -557,10 +560,10 @@ def userlist_cmd(msg):
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("manageuser_"))
 def manageuser_cb(call):
+    if not is_admin(call.from_user.id):
+        return
     uid = int(call.data.replace("manageuser_", "").strip())
-    msg_fake = call.message
-    msg_fake.text = f"/finduser {uid}"
-    finduser_cmd(msg_fake)
+    render_user_details(call.message.chat.id, uid)
 
 
 # ================= REVOKE ACCESS COMMAND =================
@@ -860,7 +863,6 @@ def approve(call):
         "*(Glti se approve hua ho toh niche button se revoke karein)*"
     )
 
-    # Edit request caption to show APPROVED status clearly to Admin
     try:
         bot.edit_message_caption(admin_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_btn, parse_mode="Markdown")
     except Exception:
@@ -901,7 +903,6 @@ def button_revoke_cb(call):
         "❌ *Access is user se successfully wapas le liya gaya hai.*"
     )
 
-    # Message updates to clearly show REVOKED to Admin
     try:
         bot.edit_message_caption(revoked_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
     except Exception:
