@@ -22,6 +22,41 @@ all_user_ids = set()
 channel_folder = "DEFAULT"
 
 
+# ================= AUTO FIX OLD USERS TIMESTAMP =================
+def auto_fix_old_users_timestamp():
+    """Jitne bhi purane approved users hain jinka time save nahi hua tha,
+    unke par aaj abhi ka timestamp set kar deta hai."""
+    try:
+        db_users = get_all_users() or []
+        users = list(set(list(db_users) + list(all_user_ids)))
+        curr_time = str(time.time())
+        folders = get_folders() or []
+
+        fixed_count = 0
+        for uid in users:
+            # Main VIP Check
+            if is_premium(uid):
+                if not get_config(f"vip_time_{uid}"):
+                    set_config(f"vip_time_{uid}", curr_time)
+                    fixed_count += 1
+
+            # Folder Passes Check
+            for f in folders:
+                if has_folder_access_db(uid, f):
+                    if not get_config(f"folder_time_{uid}_{f}"):
+                        set_config(f"folder_time_{uid}_{f}", curr_time)
+                        fixed_count += 1
+
+        if fixed_count > 0:
+            print(f"✅ Auto-Fixer: {fixed_count} purane users/folders par aaj ki date successfully set ho gayi!")
+    except Exception as e:
+        print(f"⚠️ Auto-Fixer Error: {e}")
+
+
+# Run fixer once on startup
+threading.Thread(target=auto_fix_old_users_timestamp, daemon=True).start()
+
+
 # ================= HELPER FUNCTIONS =================
 def is_admin(user_id):
     if not ADMIN_ID:
@@ -37,16 +72,24 @@ def track_user(user_id):
         pass
 
 
-def get_time_ago_str(timestamp):
+def get_formatted_time(timestamp):
     if not timestamp:
         return "N/A"
     try:
-        diff = time.time() - float(timestamp)
+        ts = float(timestamp)
+        dt = datetime.datetime.fromtimestamp(ts)
+        formatted_date = dt.strftime("%d %b %Y, %I:%M %p")
+
+        diff = time.time() - ts
         days = int(diff // 86400)
         hours = int((diff % 86400) // 3600)
+
         if days > 0:
-            return f"{days} Din {hours} Ghante pehle"
-        return f"{hours} Ghante pehle"
+            ago_str = f"{days} Din {hours} Ghante pehle"
+        else:
+            ago_str = f"{hours} Ghante pehle"
+
+        return f"{formatted_date} ({ago_str})"
     except Exception:
         return "Unknown Date"
 
@@ -61,12 +104,12 @@ def render_user_details(chat_id, target_uid):
             unlocked_folders.append(f)
 
     vip_time = get_config(f"vip_time_{target_uid}")
-    vip_time_str = get_time_ago_str(vip_time)
+    vip_time_str = get_formatted_time(vip_time)
 
     unlocked_info_str = ""
     for f in unlocked_folders:
         f_time = get_config(f"folder_time_{target_uid}_{f}")
-        unlocked_info_str += f"\n  • `{f}` (Purchased: {get_time_ago_str(f_time)})"
+        unlocked_info_str += f"\n  • `{f}`\n    📅 {get_formatted_time(f_time)}"
 
     if not unlocked_info_str:
         unlocked_info_str = " None"
@@ -85,7 +128,7 @@ def render_user_details(chat_id, target_uid):
         f"🔍 **USER DETAILS:** `{target_uid}`\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"👑 **Main VIP Status:** {'✅ APPROVED' if is_vip else '❌ LOCKED'}\n"
-        f"⏱️ **Main VIP Access Since:** {vip_time_str if is_vip else 'N/A'}\n\n"
+        f"📅 **VIP Unlocked Date:**\n`{vip_time_str if is_vip else 'N/A'}`\n\n"
         f"📂 **Unlocked Folders:**{unlocked_info_str}\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
         f"👇 Action buttons for this user:"
@@ -481,8 +524,8 @@ def admin(msg):
     text = (
         "🛠 **ADMIN PANEL & USER MANAGEMENT**\n\n"
         "👥 **USER MANAGER:**\n"
-        "👥 `/userlist` (View All Users & Manage Access)\n"
-        "🔍 `/finduser USER_ID` (Search user & check pass time/days)\n"
+        "👥 `/userlist` (View All Users Compact List)\n"
+        "🔍 `/finduser USER_ID` (Search user & check date/time)\n"
         "🚫 `/revoke USER_ID [FOLDER_NAME]` (Direct Command Revoke)\n\n"
         "⚙️ **SETTINGS:**\n"
         "✏️ `/setstart TEXT`\n"
@@ -525,45 +568,75 @@ def finduser_cmd(msg):
     render_user_details(msg.chat.id, int(raw_uid))
 
 
-# ================= USER LIST & REVOKE MANAGEMENT =================
-@bot.message_handler(commands=['userlist'])
-def userlist_cmd(msg):
-    if not is_admin(msg.from_user.id):
-        return
-
+# ================= COMPACT USER LIST WITH PAGES =================
+def render_compact_user_list(chat_id, page=1, message_id=None):
     db_users = get_all_users() or []
     users = list(set(list(db_users) + list(all_user_ids)))
 
     if not users:
-        bot.send_message(msg.chat.id, "❌ No registered users found!")
+        bot.send_message(chat_id, "❌ No registered users found!")
         return
 
-    bot.send_message(msg.chat.id, f"📋 **FETCHING ALL {len(users)} USERS...**", parse_mode="Markdown")
+    per_page = 15
+    total_users = len(users)
+    total_pages = (total_users + per_page - 1) // per_page
 
-    for uid in users[:30]:
+    if page < 1:
+        page = 1
+    if page > total_pages:
+        page = total_pages
+
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    current_batch = users[start_idx:end_idx]
+
+    list_text = f"📋 **USER LIST (Page {page}/{total_pages})**\n"
+    list_text += f"👥 **Total Users:** `{total_users}`\n"
+    list_text += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    list_text += "*(ID par tap karke copy karein, fir `/finduser ID` ya `/revoke ID` use karein)*\n\n"
+
+    for idx, uid in enumerate(current_batch, start=start_idx + 1):
         is_vip = is_premium(uid)
-        vip_time = get_config(f"vip_time_{uid}")
-        vip_str = f"✅ VIP ({get_time_ago_str(vip_time)})" if is_vip else "🔒 No VIP"
+        status = "👑 VIP" if is_vip else "👤 Free"
+        list_text += f"{idx}. `{uid}` • {status}\n"
 
-        kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-        kb.add(
-            telebot.types.InlineKeyboardButton("🔍 View & Manage Access", callback_data=f"manageuser_{uid}")
-        )
+    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+    buttons = []
 
-        bot.send_message(
-            msg.chat.id,
-            f"👤 **User ID:** `{uid}`\n👑 **Status:** {vip_str}",
-            reply_markup=kb,
-            parse_mode="Markdown"
-        )
+    if page > 1:
+        buttons.append(telebot.types.InlineKeyboardButton("◀️ Prev", callback_data=f"page_{page-1}"))
+    if page < total_pages:
+        buttons.append(telebot.types.InlineKeyboardButton("Next ▶️", callback_data=f"page_{page+1}"))
+
+    if buttons:
+        kb.add(*buttons)
+
+    if message_id:
+        try:
+            bot.edit_message_text(list_text, chat_id=chat_id, message_id=message_id, reply_markup=kb, parse_mode="Markdown")
+        except Exception:
+            bot.send_message(chat_id, list_text, reply_markup=kb, parse_mode="Markdown")
+    else:
+        bot.send_message(chat_id, list_text, reply_markup=kb, parse_mode="Markdown")
 
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("manageuser_"))
-def manageuser_cb(call):
+@bot.message_handler(commands=['userlist'])
+def userlist_cmd(msg):
+    if not is_admin(msg.from_user.id):
+        return
+    render_compact_user_list(msg.chat.id, page=1)
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("page_"))
+def page_cb(call):
     if not is_admin(call.from_user.id):
         return
-    uid = int(call.data.replace("manageuser_", "").strip())
-    render_user_details(call.message.chat.id, uid)
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
+    target_page = int(call.data.replace("page_", "").strip())
+    render_compact_user_list(call.message.chat.id, page=target_page, message_id=call.message.message_id)
 
 
 # ================= REVOKE ACCESS COMMAND =================
@@ -808,6 +881,11 @@ def requests_cmd(msg):
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("apv_"))
 def approve(call):
+    try:
+        bot.answer_callback_query(call.id, f"✅ Approved User {call.data.split('_')[1]}!", show_alert=True)
+    except Exception:
+        pass
+
     raw_data = call.data.replace("apv_", "")
     parts = raw_data.split("_", 1)
     uid = int(parts[0])
@@ -866,10 +944,13 @@ def approve(call):
     try:
         bot.edit_message_caption(admin_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_btn, parse_mode="Markdown")
     except Exception:
-        bot.send_message(call.message.chat.id, admin_ack_msg, reply_markup=admin_btn, parse_mode="Markdown")
+        try:
+            bot.edit_message_text(admin_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_btn, parse_mode="Markdown")
+        except Exception:
+            bot.send_message(call.message.chat.id, admin_ack_msg, reply_markup=admin_btn, parse_mode="Markdown")
 
 
-# Live Status Revoke Handler
+# Live Status Revoke Handler with Instant Screen Alert
 @bot.callback_query_handler(func=lambda c: c.data.startswith("btnrevoke_"))
 def button_revoke_cb(call):
     if not is_admin(call.from_user.id):
@@ -879,6 +960,11 @@ def button_revoke_cb(call):
     parts = raw_data.split("_", 1)
     uid = int(parts[0])
     ptype = parts[1] if len(parts) > 1 else "ONLINE_VIP_PLAN"
+
+    try:
+        bot.answer_callback_query(call.id, f"🚫 Access Revoked for User {uid}!", show_alert=True)
+    except Exception:
+        pass
 
     if ptype == "ONLINE_VIP_PLAN":
         remove_premium(uid)
@@ -914,6 +1000,11 @@ def button_revoke_cb(call):
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("rej_"))
 def reject(call):
+    try:
+        bot.answer_callback_query(call.id, "❌ Payment Rejected!", show_alert=True)
+    except Exception:
+        pass
+
     raw_data = call.data.replace("rej_", "")
     uid = int(raw_data.split("_")[0])
     remove_pending(uid)
@@ -934,7 +1025,10 @@ def reject(call):
     try:
         bot.edit_message_caption(rejected_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
     except Exception:
-        bot.send_message(call.message.chat.id, rejected_ack_msg, parse_mode="Markdown")
+        try:
+            bot.edit_message_text(rejected_ack_msg, chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
+        except Exception:
+            bot.send_message(call.message.chat.id, rejected_ack_msg, parse_mode="Markdown")
 
 
 # ================= FOLDER MANAGEMENT =================
