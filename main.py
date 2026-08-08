@@ -1,6 +1,3 @@
-Yeh lijiye aapka poora code bilkul theek karke aur end se formatting errors hata kar niche diya gaya hai.
-Aap is poore code ko copy karke apni main.py file me paste kar sakte hain:
-```python
 import io
 import threading
 import time
@@ -1245,5 +1242,3 @@ def open_folder(msg):
 # ================= RUN =================
 print("Bot Running...")
 bot.infinity_polling(skip_pending=True)
-
-```
