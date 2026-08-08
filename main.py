@@ -72,7 +72,7 @@ def track_user(user_id):
         pass
 
 
-def get_formatted_time(timestamp):
+def get_formatted_time(timestamp, compact=False):
     if not timestamp:
         return "N/A"
     try:
@@ -83,13 +83,17 @@ def get_formatted_time(timestamp):
         diff = time.time() - ts
         days = int(diff // 86400)
         hours = int((diff % 86400) // 3600)
+        mins = int((diff % 3600) // 60)
 
         if days > 0:
             ago_str = f"{days}d {hours}h ago"
-        else:
+        elif hours > 0:
             ago_str = f"{hours}h ago"
+        else:
+            ago_str = f"{mins}m ago"
 
-        # Code block style for smaller clean font
+        if compact:
+            return f"`{formatted_date} ({ago_str})`"
         return f"`{formatted_date} ({ago_str})`"
     except Exception:
         return "`Unknown Date`"
@@ -569,16 +573,17 @@ def finduser_cmd(msg):
     render_user_details(msg.chat.id, int(raw_uid))
 
 
-# ================= COMPACT USER LIST WITH PAGES =================
+# ================= COMPACT USER LIST WITH SMALL FONT DATE/TIME & ACCESS DETAILS =================
 def render_compact_user_list(chat_id, page=1, message_id=None):
     db_users = get_all_users() or []
     users = list(set(list(db_users) + list(all_user_ids)))
+    folders = get_folders() or []
 
     if not users:
         bot.send_message(chat_id, "❌ No registered users found!")
         return
 
-    per_page = 15
+    per_page = 10
     total_users = len(users)
     total_pages = (total_users + per_page - 1) // per_page
 
@@ -594,12 +599,38 @@ def render_compact_user_list(chat_id, page=1, message_id=None):
     list_text = f"📋 **USER LIST (Page {page}/{total_pages})**\n"
     list_text += f"👥 **Total Users:** `{total_users}`\n"
     list_text += "━━━━━━━━━━━━━━━━━━━━━━\n"
-    list_text += "*(ID par tap karke copy karein, fir `/finduser ID` ya `/revoke ID` use karein)*\n\n"
+    list_text += "*(ID tap karke copy karein ➔ `/finduser ID` ya `/revoke ID`)*\n\n"
 
     for idx, uid in enumerate(current_batch, start=start_idx + 1):
         is_vip = is_premium(uid)
-        status = "👑 VIP" if is_vip else "👤 Free"
-        list_text += f"{idx}. `{uid}` • {status}\n"
+        
+        # Unlocked folders check
+        unlocked = []
+        for f in folders:
+            if has_folder_access_db(uid, f):
+                unlocked.append(f)
+
+        # Status Build
+        if is_vip:
+            status_str = "👑 Main VIP"
+        elif unlocked:
+            status_str = f"📂 Folders ({len(unlocked)})"
+        else:
+            status_str = "👤 Free"
+
+        list_text += f"{idx}. `{uid}` • **{status_str}**\n"
+
+        # Display Small Font Date & Time for Main VIP
+        if is_vip:
+            v_time = get_config(f"vip_time_{uid}")
+            list_text += f"   `📅 Main VIP ➔ {get_formatted_time(v_time, compact=True)}`\n"
+
+        # Display Small Font Date & Time for Folders
+        for f in unlocked:
+            f_time = get_config(f"folder_time_{uid}_{f}")
+            list_text += f"   `└ {f} ➔ {get_formatted_time(f_time, compact=True)}`\n"
+
+        list_text += "\n"
 
     kb = telebot.types.InlineKeyboardMarkup(row_width=2)
     buttons = []
