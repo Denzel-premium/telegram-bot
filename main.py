@@ -539,7 +539,7 @@ def build_admin_dashboard():
     )
     kb.add(
         telebot.types.InlineKeyboardButton("📂 Folders List", callback_data="admin_folders"),
-        telebot.types.InlineKeyboardButton("📊 Bot Stats", callback_data="admin_stats")
+        telebot.types.InlineKeyboardButton("📊 Detailed Bot Stats", callback_data="admin_stats")
     )
     kb.add(
         telebot.types.InlineKeyboardButton("⚙️ Settings Helper", callback_data="admin_settings"),
@@ -576,8 +576,18 @@ def admin_dashboard_cb(call):
 def admin_requests_cb(call):
     if not is_admin(call.from_user.id):
         return
+    
+    pending = get_pending()
+    if not pending:
+        try:
+            bot.answer_callback_query(call.id, "❌ No pending payment requests right now!", show_alert=True)
+        except Exception:
+            pass
+        bot.send_message(call.message.chat.id, "❌ **NO PENDING REQUESTS**\n\nAbhi koi naya payment request nahi aaya hai.", parse_mode="Markdown")
+        return
+
     try:
-        bot.answer_callback_query(call.id)
+        bot.answer_callback_query(call.id, f"📥 Found {len(pending)} pending request(s)!")
     except Exception:
         pass
     requests_cmd(call.message)
@@ -910,7 +920,7 @@ def setimage_cmd(msg):
         bot.reply_to(msg, "📸 Abhi start banner image bhejo:")
 
 
-# ================= BROADCAST & STATS =================
+# ================= BROADCAST & DETAILED STATS =================
 @bot.message_handler(commands=['broadcast'])
 def broadcast_msg(msg):
     if is_admin(msg.from_user.id):
@@ -938,15 +948,39 @@ def stats(msg):
     if is_admin(msg.from_user.id):
         try:
             db_users = get_all_users() or []
-            users_count = len(set(list(db_users) + list(all_user_ids)))
-            folders_count = len(get_folders() or [])
+            users = list(set(list(db_users) + list(all_user_ids)))
+            folders = get_folders() or []
+
+            vip_users_count = 0
+            folder_users_count = 0
+            free_users_count = 0
+
+            for uid in users:
+                is_vip = is_premium(uid)
+                has_folder = any(has_folder_access_db(uid, f) for f in folders)
+
+                if is_vip:
+                    vip_users_count += 1
+                if has_folder:
+                    folder_users_count += 1
+                if not is_vip and not has_folder:
+                    free_users_count += 1
 
             stats_text = (
-                "📊 BOT STATS\n\n"
-                f"👥 Total Users: {users_count}\n"
-                f"📂 Total Folders: {folders_count}"
+                "📊 **DETAILED BOT STATS**\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"👥 **Total Registered Users:** `{len(users)}`\n"
+                f"👑 **Main VIP Members:** `{vip_users_count}`\n"
+                f"📂 **Folder Pass Holders:** `{folder_users_count}`\n"
+                f"👤 **Free Users:** `{free_users_count}`\n\n"
+                f"📁 **Total Folders:** `{len(folders)}`\n"
+                "━━━━━━━━━━━━━━━━━━━━━━"
             )
-            bot.send_message(msg.chat.id, stats_text)
+            
+            kb = telebot.types.InlineKeyboardMarkup()
+            kb.add(telebot.types.InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_dashboard"))
+
+            bot.send_message(msg.chat.id, stats_text, reply_markup=kb, parse_mode="Markdown")
         except Exception as e:
             bot.send_message(msg.chat.id, f"⚠️ Stats Error: {e}")
 
@@ -1001,7 +1035,7 @@ def requests_cmd(msg):
 
     pending = get_pending()
     if not pending:
-        bot.send_message(msg.chat.id, "❌ No pending requests")
+        bot.send_message(msg.chat.id, "❌ **NO PENDING REQUESTS**\n\nAbhi koi naya payment request nahi aaya hai.", parse_mode="Markdown")
         return
 
     for d in pending:
