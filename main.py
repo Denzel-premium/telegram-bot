@@ -1,7 +1,482 @@
+import io
+import threading
+import time
+import urllib.parse
+import datetime
+import requests
+import telebot
+
+from config import ADMIN_ID, TOKEN
+from db import *
+
+bot = telebot.TeleBot(TOKEN)
+
+# ================= STORAGE =================
+temp_access = {}
+sent_videos = {}
+current_folder = {}
+admin_states = {}
+user_pending_folder = {}
+all_user_ids = set()
+
+channel_folder = "DEFAULT"
 
 
+# ================= AUTO FIX OLD USERS TIMESTAMP =================
+def auto_fix_old_users_timestamp():
+    """Jitne bhi purane approved users hain jinka time save nahi hua tha,
+    unke par aaj abhi ka timestamp set kar deta hai."""
+    try:
+        db_users = get_all_users() or []
+        users = list(set(list(db_users) + list(all_user_ids)))
+        curr_time = str(time.time())
+        folders = get_folders() or []
+
+        fixed_count = 0
+        for uid in users:
+            # Main VIP Check
+            if is_premium(uid):
+                v_t = get_config(f"vip_time_{uid}")
+                if not v_t or str(v_t).strip() in ["None", "N/A", ""]:
+                    set_config(f"vip_time_{uid}", curr_time)
+                    fixed_count += 1
+
+            # Folder Passes Check
+            for f in folders:
+                if has_folder_access_db(uid, f):
+                    f_t = get_config(f"folder_time_{uid}_{f}")
+                    if not f_t or str(f_t).strip() in ["None", "N/A", ""]:
+                        set_config(f"folder_time_{uid}_{f}", curr_time)
+                        fixed_count += 1
+
+        if fixed_count > 0:
+            print(f"✅ Auto-Fixer: {fixed_count} purane users/folders par aaj ki date successfully set ho gayi!")
+    except Exception as e:
+        print(f"⚠️ Auto-Fixer Error: {e}")
+
+
+# Run fixer once on startup
+threading.Thread(target=auto_fix_old_users_timestamp, daemon=True).start()
+
+
+# ================= HELPER FUNCTIONS =================
+def is_admin(user_id):
+    if not ADMIN_ID:
+        return False
+    return str(user_id).strip() == str(ADMIN_ID).strip()
+
+
+def track_user(user_id):
+    all_user_ids.add(user_id)
+    try:
+        add_user(user_id)
+    except Exception:
+        pass
+
+
+def get_formatted_time(timestamp, compact=False):
+    if not timestamp or str(timestamp).strip() in ["None", "N/A", ""]:
+        return "N/A"
+    try:
+        ts = float(timestamp)
+        dt = datetime.datetime.fromtimestamp(ts)
+        formatted_date = dt.strftime("%d %b %Y, %I:%M %p")
+
+        diff = time.time() - ts
+        days = int(diff // 86400)
+        hours = int((diff % 86400) // 3600)
+        mins = int((diff % 3600) // 60)
+
+        if days > 0:
+            ago_str = f"{days}d {hours}h ago"
+        elif hours > 0:
+            ago_str = f"{hours}h ago"
+        else:
+            ago_str = f"{mins}m ago"
+
+        if compact:
+            return f"`{formatted_date} ({ago_str})`"
+        return f"`{formatted_date} ({ago_str})`"
+    except Exception:
+        return "`Unknown Date`"
+
+
+# ================= HARD REVOKE SYSTEM (SAFE & CRASH FREE) =================
+def force_revoke_access(target_uid, ptype):
+    """Database, Global Configurations aur RAM Memory se user access complete hta deta hai."""
+    try:
+        target_uid = int(target_uid)
+    except Exception:
+        return
+
+    # 1. RAM Memory Clear
+    if target_uid in temp_access:
+        del temp_access[target_uid]
+    if target_uid in user_pending_folder:
+        del user_pending_folder[target_uid]
+    if target_uid in sent_videos:
+        del sent_videos[target_uid]
+
+    if ptype == "ONLINE_VIP_PLAN":
+        # Database Se Main VIP Access Remove
+        try:
+            remove_premium(target_uid)
+        except Exception as e:
+            print(f"Error removing premium: {e}")
+        
+        # Configurations Reset
+        try:
+            set_config(f"vip_time_{target_uid}", "None")
+        except Exception as e:
+            print(f"Error clearing vip_time: {e}")
+
+    else:
+        # Database Se Specific Folder Access Remove
+        try:
+            revoke_folder_access_db(target_uid, ptype)
+        except Exception as e:
+            print(f"Error revoking folder db access: {e}")
+            
+        # Configurations Reset
+        try:
+            set_config(f"folder_time_{target_uid}_{ptype}", "None")
+        except Exception as e:
+            print(f"Error clearing folder_time: {e}")
+
+
+def render_user_details(chat_id, target_uid, message_id=None):
+    try:
+        target_uid = int(target_uid)
+    except Exception:
+        return
+
+    is_vip = is_premium(target_uid)
+    folders = get_folders() or []
+    unlocked_folders = []
+
+    for f in folders:
+        if has_folder_access_db(target_uid, f):
+            unlocked_folders.append(f)
+
+    vip_time = get_config(f"vip_time_{target_uid}")
+    vip_time_str = get_formatted_time(vip_time)
+
+    unlocked_info_str = ""
+    for f in unlocked_folders:
+        f_time = get_config(f"folder_time_{target_uid}_{f}")
+        unlocked_info_str += f"\n  • `{f}` ➔ {get_formatted_time(f_time)}"
+
+    if not unlocked_info_str:
+        unlocked_info_str = " None"
+
+    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+
+    if is_vip:
+        kb.add(telebot.types.InlineKeyboardButton("🚫 Revoke Main VIP", callback_data=f"btnrevoke_{target_uid}_ONLINE_VIP_PLAN"))
+    else:
+        kb.add(telebot.types.InlineKeyboardButton("✅ Grant Main VIP", callback_data=f"apv_{target_uid}_ONLINE_VIP_PLAN"))
+
+    for f in unlocked_folders:
+        kb.add(telebot.types.InlineKeyboardButton(f"🚫 Revoke Pass ({f})", callback_data=f"btnrevoke_{target_uid}_{f}"))
+
+    text = (
+        f"🔍 **USER DETAILS:** `{target_uid}`\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👑 **Main VIP:** {'✅ APPROVED' if is_vip else '❌ LOCKED'}\n"
+        f"📅 **VIP Date:** {vip_time_str if is_vip else '`N/A`'}\n\n"
+        f"📂 **Unlocked Folders:**{unlocked_info_str}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👇 Action buttons for this user:"
+    )
+
+    if message_id:
+        try:
+            bot.edit_message_text(text, chat_id=chat_id, message_id=message_id, reply_markup=kb, parse_mode="Markdown")
+        except Exception:
+            try:
+                bot.send_message(chat_id, text, reply_markup=kb, parse_mode="Markdown")
+            except Exception:
+                pass
+    else:
+        try:
+            bot.send_message(chat_id, text, reply_markup=kb, parse_mode="Markdown")
+        except Exception:
+            pass
+
+
+# ================= MAIN MENU BUILDER =================
+def build_main_menu():
+    text = get_config("start_text") or "👋 Welcome"
+    price = get_config("price") or "29"
+
+    inline = telebot.types.InlineKeyboardMarkup(row_width=1)
+    inline.add(
+        telebot.types.InlineKeyboardButton(f"💰 Buy Premium ₹{price}", callback_data="generate_qr"),
+        telebot.types.InlineKeyboardButton("👁️ Demo", callback_data="show_demo"),
+        telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid_main"),
+        telebot.types.InlineKeyboardButton("📂 Folder Passes", callback_data="folder_pass_menu"),
+    )
+    return text, inline
+
+
+# ================= EXPIRY WORKER =================
+def expiry_worker():
+    while True:
+        try:
+            now = time.time()
+            expired = get_expired(now)
+
+            if expired:
+                for item in expired:
+                    chat_id = item["chat_id"]
+                    for mid in item.get("message_ids", []):
+                        try:
+                            bot.delete_message(chat_id, mid)
+                        except Exception:
+                            pass
+                    delete_expiry(item["_id"])
+
+        except Exception as e:
+            print("Expiry error:", e)
+
+        time.sleep(15)
+
+
+threading.Thread(target=expiry_worker, daemon=True).start()
+
+
+# ================= START COMMAND =================
+@bot.message_handler(commands=['start'])
+def start(msg):
+    track_user(msg.from_user.id)
+
+    text, inline = build_main_menu()
+    start_image = get_config("start_image")
+
+    kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("📥 Download")
+
+    if start_image:
+        try:
+            bot.send_photo(msg.chat.id, photo=start_image, caption=text, reply_markup=kb)
+        except Exception:
+            bot.send_message(msg.chat.id, text, reply_markup=kb)
+    else:
+        bot.send_message(msg.chat.id, text, reply_markup=kb)
+
+    bot.send_message(msg.chat.id, "👇 Select Option Below:", reply_markup=inline, parse_mode="Markdown")
+
+
+# ================= NAVIGATION =================
+@bot.callback_query_handler(func=lambda call: call.data == "go_home")
+def go_home_handler(call):
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
+
+    text, inline = build_main_menu()
+
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+
+    bot.send_message(call.message.chat.id, text, reply_markup=inline, parse_mode="Markdown")
+
+
+# ================= BUY PREMIUM =================
+@bot.callback_query_handler(func=lambda call: call.data == "generate_qr")
+def generate_qr_handler(call):
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
+
+    price = get_config("price") or "29"
+    upi_id = get_config("upi_id") or "example@upi"
+    upi_url = f"upi://pay?pa={upi_id}&pn=Premium&am={price}&cu=INR"
+
+    user_pending_folder[call.from_user.id] = "ONLINE_VIP_PLAN"
+
+    inline = telebot.types.InlineKeyboardMarkup(row_width=1)
+    inline.add(
+        telebot.types.InlineKeyboardButton("💳 I Have Paid", callback_data="paid_main"),
+        telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
+    )
+
+    caption_text = (
+        f"👑 **BUY PREMIUM ₹{price}** 👑\n\n"
+        f"📱 **SCAN & PAY ₹{price}**\n\n"
+        f"📌 **UPI ID:** `{upi_id}` *(Tap to copy)*\n"
+        f"💰 **Amount:** ₹{price}\n\n"
+        f"👉 Payment karne ke baad [ 💳 I Have Paid ] button par click karke screenshot bhej dein!"
+    )
+
+    qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&bgcolor=ffffff&color=000000&data={urllib.parse.quote(upi_url)}"
+
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+
+    try:
+        bot.send_photo(call.message.chat.id, photo=qr_api, caption=caption_text, reply_markup=inline, parse_mode="Markdown")
+    except Exception:
+        bot.send_message(call.message.chat.id, caption_text, reply_markup=inline, parse_mode="Markdown")
+
+
+# ================= DEMO =================
+@bot.callback_query_handler(func=lambda call: call.data == "show_demo")
+def show_demo_handler(call):
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
+
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+
+    demo_file = get_config("demo_file_id")
+    demo_type = get_config("demo_type")
+    demo_text = get_config("demo_text") or "👁️ Here is Demo Content!"
+
+    if not demo_file and not demo_text:
+        bot.answer_callback_query(call.id, "❌ Demo content available nahi hai.", show_alert=True)
+        return
+
+    buy_kb = telebot.types.InlineKeyboardMarkup(row_width=1)
+    price = get_config("price") or "29"
+    buy_kb.add(
+        telebot.types.InlineKeyboardButton(f"💰 Buy Premium ₹{price}", callback_data="generate_qr"),
+        telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home")
+    )
+
+    sent_demo_ids = []
+    demo_caption = f"{demo_text}\n\n⚠️ Yeh demo 10 minute me delete ho jayega!"
+
+    try:
+        bot.delete_message(chat_id, call.message.message_id)
+    except Exception:
+        pass
+
+    if demo_type == "video" and demo_file:
+        m1 = bot.send_video(chat_id, video=demo_file, caption=demo_caption, reply_markup=buy_kb, protect_content=True)
+        sent_demo_ids.append(m1.message_id)
+    elif demo_type == "photo" and demo_file:
+        m1 = bot.send_photo(chat_id, photo=demo_file, caption=demo_caption, reply_markup=buy_kb)
+        sent_demo_ids.append(m1.message_id)
+    else:
+        m1 = bot.send_message(chat_id, demo_caption, reply_markup=buy_kb)
+        sent_demo_ids.append(m1.message_id)
+
+    if sent_demo_ids:
+        set_expiry(user_id, sent_demo_ids, chat_id, time.time() + 600)
+
+
+# ================= I HAVE PAID BUTTON =================
+@bot.callback_query_handler(func=lambda call: call.data == "paid_main")
+def paid_main_handler(call):
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception:
+        pass
+
+    user_pending_folder[call.from_user.id] = "ONLINE_VIP_PLAN"
+
+    inline = telebot.types.InlineKeyboardMarkup()
+    inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
+
+    text = (
+        f"📸 **PAYMENT SCREENSHOT BHEJEIN** 📸\n\n"
+        f"👉 Payment ka Screenshot abhi chat me bhej dein! Admin verify karke access de dega."
+    )
+
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+
+    bot.send_message(call.message.chat.id, text, reply_markup=inline, parse_mode="Markdown")
+
+
+# ================= FOLDER PASSES MENU =================
+@bot.callback_query_handler(func=lambda call: call.data == "folder_pass_menu")
+def folder_pass_menu(call):
+    user_id = call.from_user.id
+    folders = get_folders() or []
+    if not folders:
+        bot.answer_callback_query(call.id, "❌ No folders available", show_alert=True)
+        return
+
+    default_text = "📁 **FOLDER PASSES**\n\nNiche se folder select karke pass buy karein:"
+    pass_instruction = get_config("pass_text") or default_text
+
+    inline = telebot.types.InlineKeyboardMarkup(row_width=1)
+    for f in folders:
+        f_price = get_config(f"folder_price_{f}") or "49"
+        vids = get_videos(f) or []
+        v_count = len(vids)
+        
+        is_unlocked = has_folder_access_db(user_id, f)
+
+        if is_unlocked:
+            status_text = " ✅ Unlocked"
+        else:
+            status_text = f" 🔒 • ₹{f_price}"
+            
+        inline.add(telebot.types.InlineKeyboardButton(f"📂 {f} ({v_count} Vids){status_text}", callback_data=f"view_folder_{f}"))
+
+    inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
+
+    try:
+        bot.edit_message_text(pass_instruction, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=inline, parse_mode="Markdown")
+    except Exception:
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except Exception:
+            pass
+        bot.send_message(call.message.chat.id, pass_instruction, reply_markup=inline, parse_mode="Markdown")
+
+
+# ================= VIEW FOLDER DETAILS =================
+@bot.callback_query_handler(func=lambda c: c.data.startswith("view_folder_"))
+def view_folder_cb(call):
+    user_id = call.from_user.id
+    folder = call.data.replace("view_folder_", "").strip()
+    f_price = get_config(f"folder_price_{folder}") or "49"
+    vids = get_videos(folder) or []
+    vids_count = len(vids)
+
+    inline = telebot.types.InlineKeyboardMarkup(row_width=1)
+
+    if is_admin(user_id):
+        inline.add(telebot.types.InlineKeyboardButton("🔄 Test Send Videos", callback_data=f"refetch_pass_{folder}"))
+        inline.add(telebot.types.InlineKeyboardButton("🔙 Back to Folders", callback_data="folder_pass_menu"))
+        inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
+        
+        text = (
+            f"⚙️ **ADMIN FOLDER VIEW**\n\n"
+            f"📂 **Folder:** `{folder}`\n"
+            f"🎬 **Total Videos:** `{vids_count}`\n"
+            f"💰 **Current Price:** ₹{f_price}\n\n"
+            f"✏️ *Price badalne ke liye:*\n`/setfolderprice {folder} PRICE`"
         )
-    
+    else:
+        is_unlocked = has_folder_access_db(user_id, folder)
+
+        if is_unlocked:
+            inline.add(telebot.types.InlineKeyboardButton(f"📥 Download & Share {folder}", callback_data=f"refetch_pass_{folder}"))
+            status_info = f"✅ **Is folder ka Full Access Pass Unlocked hai!**\n🎬 **Available Videos:** `{vids_count}`"
+        else:
+            inline.add(telebot.types.InlineKeyboardButton(f"💳 Buy Folder Pass (₹{f_price})", callback_data=f"buy_folder_{folder}"))
+            status_info = f"🔒 **Status:** Locked\n💰 **Pass Price:** ₹{f_price}\n🎬 **Total Videos:** `{vids_count}`"
+
+        inline.add(telebot.types.InlineKeyboardButton("🔙 Back to Folders", callback_data="folder_pass_menu"))
+        inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
+
+        text = f"📂 **FOLDER:** `{folder}`\n\n{status_info}"
+
     try:
         bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=inline, parse_mode="Markdown")
     except Exception:
@@ -76,7 +551,7 @@ def refetch_pass_cb(call):
     is_unlocked = is_admin(user_id) or has_folder_access_db(user_id, folder)
 
     if not is_unlocked:
-        bot.answer_callback_query(call.id, f"❌ Access Revoked! Folder `{folder}` ka pass buy karein!", show_alert=True)
+        bot.answer_callback_query(call.id, f"❌ Folder `{folder}` ka pass buy karein!", show_alert=True)
         return
 
     vids = get_videos(folder) or []
