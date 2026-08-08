@@ -374,11 +374,10 @@ def paid_folder_prompt(call):
     bot.send_message(call.message.chat.id, text, reply_markup=inline, parse_mode="Markdown")
 
 
-# ================= RE-FETCH / SHARE FOLDER (SAFE CALLBACK FIX) =================
+# ================= RE-FETCH / SHARE FOLDER =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("refetch_pass_"))
 def refetch_pass_cb(call):
     user_id = call.from_user.id
-    # Fixed string replacement so underscore folder names like ig_vids don't split incorrectly
     folder = call.data.replace("refetch_pass_", "").strip()
 
     is_unlocked = is_admin(user_id) or has_folder_access_db(user_id, folder)
@@ -422,26 +421,62 @@ def admin(msg):
         return
 
     text = (
-        "🛠 ADMIN PANEL\n\n"
-        "⚙️ SETTINGS:\n"
-        "✏️ /setstart TEXT\n"
-        "🖼 /setimage (Set Banner Photo)\n"
-        "🎬 /setdemo (Set Demo Video)\n"
-        "💰 /setprice PRICE\n"
-        "📂 /setfolderprice FOLDER_NAME PRICE\n"
-        "📝 /setpasstext YOUR_CUSTOM_TEXT\n"
-        "💳 /setupi YOUR_UPI_ID\n\n"
-        "💳 /requests\n"
-        "📢 /broadcast MESSAGE\n"
-        "📊 /stats\n\n"
-        "📂 /setfolder NAME\n"
-        "📂 /setchannelfolder NAME\n"
-        "📁 /folders\n"
-        "🗑 /delfolder NAME\n"
-        "❌ /delvideo INDEX"
+        "🛠 **ADMIN PANEL**\n\n"
+        "⚙️ **SETTINGS:**\n"
+        "✏️ `/setstart TEXT`\n"
+        "🖼 `/setimage` (Set Banner Photo)\n"
+        "🎬 `/setdemo` (Set Demo Video)\n"
+        "💰 `/setprice PRICE`\n"
+        "📂 `/setfolderprice FOLDER_NAME PRICE`\n"
+        "📝 `/setpasstext YOUR_CUSTOM_TEXT`\n"
+        "💳 `/setupi YOUR_UPI_ID`\n\n"
+        "📥 **REQUESTS & REVOKE:**\n"
+        "💳 `/requests` (Check Payment Screenshots)\n"
+        "🚫 `/revoke USER_ID [FOLDER_NAME]` (Direct Command Revoke)\n\n"
+        "📢 `/broadcast MESSAGE`\n"
+        "📊 `/stats`\n\n"
+        "📂 `/setfolder NAME`\n"
+        "📂 `/setchannelfolder NAME`\n"
+        "📁 `/folders`\n"
+        "🗑 `/delfolder NAME`\n"
+        "❌ `/delvideo INDEX`"
     )
 
-    bot.send_message(msg.chat.id, text)
+    bot.send_message(msg.chat.id, text, parse_mode="Markdown")
+
+
+# ================= REVOKE ACCESS COMMAND =================
+@bot.message_handler(commands=['revoke'])
+def revoke_cmd(msg):
+    if not is_admin(msg.from_user.id):
+        return
+
+    parts = msg.text.strip().split()
+    if len(parts) < 2:
+        bot.reply_to(msg, "❌ **Usage:**\n`/revoke USER_ID` (Main Premium Revoke)\n`/revoke USER_ID FOLDER_NAME` (Folder Access Revoke)", parse_mode="Markdown")
+        return
+
+    try:
+        target_uid = int(parts[1])
+    except ValueError:
+        bot.reply_to(msg, "❌ Invalid User ID!")
+        return
+
+    if len(parts) >= 3:
+        folder_name = parts[2]
+        revoke_folder_access_db(target_uid, folder_name)
+        bot.reply_to(msg, f"🚫 Folder Access `{folder_name}` for user `{target_uid}` is REVOKED!", parse_mode="Markdown")
+        try:
+            bot.send_message(target_uid, f"⚠️ **ACCESS CANCELLED**\n\nAapka Folder Pass `{folder_name}` ka access Admin dwara cancel/revoke kar diya gaya hai.", parse_mode="Markdown")
+        except Exception:
+            pass
+    else:
+        remove_premium(target_uid)
+        bot.reply_to(msg, f"🚫 Main Premium for user `{target_uid}` is REVOKED!", parse_mode="Markdown")
+        try:
+            bot.send_message(target_uid, "⚠️ **PREMIUM CANCELLED**\n\nAapka Main Premium Access cancel/revoke kar diya gaya hai.", parse_mode="Markdown")
+        except Exception:
+            pass
 
 
 # ================= SETTINGS COMMANDS =================
@@ -609,7 +644,7 @@ def handle_media(msg):
         bot.send_message(msg.chat.id, f"⏳ Payment Screenshot Received for '{pending_folder}'! Wait for admin approval.")
 
 
-# ================= REQUESTS APPROVAL =================
+# ================= REQUESTS APPROVAL WITH EASY BUTTONS =================
 @bot.message_handler(commands=['requests'])
 def requests_cmd(msg):
     if not is_admin(msg.from_user.id):
@@ -629,7 +664,7 @@ def requests_cmd(msg):
         else:
             f_price = get_config(f"folder_price_{ptype}") or "49"
 
-        kb = telebot.types.InlineKeyboardMarkup()
+        kb = telebot.types.InlineKeyboardMarkup(row_width=2)
         kb.add(
             telebot.types.InlineKeyboardButton(f"✅ Approve ({ptype})", callback_data=f"apv_{uid}_{ptype}"),
             telebot.types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_{uid}")
@@ -638,7 +673,7 @@ def requests_cmd(msg):
         bot.send_photo(
             msg.chat.id,
             d["file_id"],
-            caption=f"📩 PAYMENT REQUEST\n\n👤 User: `{uid}`\n📂 Request For: `{ptype}`\n💰 Price: ₹{f_price}",
+            caption=f"📩 **PAYMENT REQUEST**\n\n👤 **User ID:** `{uid}` *(Tap to copy)*\n📂 **Request For:** `{ptype}`\n💰 **Price:** ₹{f_price}",
             reply_markup=kb,
             parse_mode="Markdown"
         )
@@ -646,7 +681,6 @@ def requests_cmd(msg):
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("apv_"))
 def approve(call):
-    # Safe splitting to keep underscores intact in folder names like ig_vids
     raw_data = call.data.replace("apv_", "")
     parts = raw_data.split("_", 1)
     uid = int(parts[0])
@@ -656,20 +690,29 @@ def approve(call):
 
     inline = telebot.types.InlineKeyboardMarkup()
 
+    # User ke paas ye stylish aur formatted message jayega
     if ptype == "ONLINE_VIP_PLAN":
         add_premium(uid)
         user_msg = (
-            "🎉 **MAIN PREMIUM APPROVED!** 🎉\n\n"
-            "📥 Click **'Download'** button to view videos (Protected Watch View)."
+            "🎊 **PAYMENT VERIFIED & APPROVED!** 🎊\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "👑 **STATUS:** **APPROVED** ✅\n"
+            "✨ **PLAN:** **MAIN PREMIUM VIP**\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "📥 Videos dekhne ke liye niche **'Download'** button par click karein aur apna folder select karein!"
         )
         inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
     else:
         grant_folder_access_db(uid, ptype)
         vids_count = count_videos(ptype)
         user_msg = (
-            f"🎉 **FOLDER PASS APPROVED FOR `{ptype}`!** 🎉\n\n"
-            f"🎬 **Available Videos:** `{vids_count}`\n"
-            f"📂 You can now download and share videos of this folder from **Folder Passes** menu!"
+            "🎊 **PAYMENT VERIFIED & APPROVED!** 🎊\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "👑 **STATUS:** **APPROVED** ✅\n"
+            f"📂 **FOLDER:** `{ptype}`\n"
+            f"🎬 **TOTAL VIDEOS:** `{vids_count}`\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "📥 Aap niche button se **Folder Passes** open karke videos download aur share kar sakte hain!"
         )
         inline.add(telebot.types.InlineKeyboardButton(f"📂 Open Folder {ptype}", callback_data=f"view_folder_{ptype}"))
         inline.add(telebot.types.InlineKeyboardButton("🏠 Main Menu", callback_data="go_home"))
@@ -679,21 +722,65 @@ def approve(call):
     except Exception as e:
         print(f"User Notification Error: {e}")
 
-    bot.send_message(call.message.chat.id, f"✅ Approved user {uid} for `{ptype}`!", parse_mode="Markdown")
+    # Admin Control Panel Message with bold APPROVED status
+    admin_btn = telebot.types.InlineKeyboardMarkup()
+    admin_btn.add(telebot.types.InlineKeyboardButton(f"🚫 Revoke Permission ({uid})", callback_data=f"btnrevoke_{uid}_{ptype}"))
+
+    admin_ack_msg = (
+        "✅ **STATUS:** **APPROVED**\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 **USER ID:** `{uid}`\n"
+        f"📂 **REQUEST FOR:** `{ptype}`\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "*(Glti se approve hua ho toh niche button se revoke karein)*"
+    )
+
+    bot.send_message(call.message.chat.id, admin_ack_msg, reply_markup=admin_btn, parse_mode="Markdown")
+
+
+# Easy One-Click Revoke Callback Handler
+@bot.callback_query_handler(func=lambda c: c.data.startswith("btnrevoke_"))
+def button_revoke_cb(call):
+    if not is_admin(call.from_user.id):
+        return
+
+    raw_data = call.data.replace("btnrevoke_", "")
+    parts = raw_data.split("_", 1)
+    uid = int(parts[0])
+    ptype = parts[1] if len(parts) > 1 else "ONLINE_VIP_PLAN"
+
+    if ptype == "ONLINE_VIP_PLAN":
+        remove_premium(uid)
+        msg_text = f"🚫 **Main Premium Revoked** for user `{uid}`!"
+        user_notify = "⚠️ **PREMIUM CANCELLED**\n\nAapka Main Premium access cancel/revoke kar diya gaya hai."
+    else:
+        revoke_folder_access_db(uid, ptype)
+        msg_text = f"🚫 **Folder Access `{ptype}` Revoked** for user `{uid}`!"
+        user_notify = f"⚠️ **ACCESS CANCELLED**\n\nAapka Folder `{ptype}` ka access cancel kar diya gaya hai."
+
+    try:
+        bot.send_message(uid, user_notify, parse_mode="Markdown")
+    except Exception:
+        pass
+
+    try:
+        bot.edit_message_text(msg_text, chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
+    except Exception:
+        bot.send_message(call.message.chat.id, msg_text, parse_mode="Markdown")
 
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("rej_"))
 def reject(call):
-    raw_data = c.data.replace("rej_", "")
+    raw_data = call.data.replace("rej_", "")
     uid = int(raw_data.split("_")[0])
     remove_pending(uid)
     
     try:
         bot.send_message(uid, "❌ **Your Payment Request was Rejected.** Please check payment details or contact admin.", parse_mode="Markdown")
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Rejection Send Error: {e}")
         
-    bot.send_message(call.message.chat.id, f"❌ Rejected user {uid}")
+    bot.send_message(call.message.chat.id, f"❌ Rejected payment request for user `{uid}`", parse_mode="Markdown")
 
 
 # ================= FOLDER MANAGEMENT =================
